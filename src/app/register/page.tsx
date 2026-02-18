@@ -24,9 +24,17 @@ export default function RegisterPage() {
             localStorage.setItem('userName', data.name);
             localStorage.setItem('userRole', data.role);
             localStorage.setItem('userId', data._id);
+
+            // Set cookies for Next.js Middleware
+            document.cookie = `token=${data.token}; path=/; max-age=2592000`;
+            document.cookie = `userRole=${data.role}; path=/; max-age=2592000`;
+            document.cookie = `riderStatus=${data.riderStatus || 'approved'}; path=/; max-age=2592000`;
+
             if (data.role === 'admin') router.push('/admin');
-            else if (data.role === 'rider') router.push('/rider');
-            else router.push('/dashboard');
+            else if (data.role === 'rider') {
+                alert('สมัครสมาชิกสำเร็จ! กรุณารอเจ้าหน้าที่ตรวจสอบและอนุมัติบัญชีของคุณ');
+                router.push('/login');
+            } else router.push('/dashboard');
         } catch (err: any) {
             setError(err.response?.data?.message || 'Registration failed');
         } finally {
@@ -35,7 +43,7 @@ export default function RegisterPage() {
     };
 
     const roles = [
-        { value: 'user', label: '👤 Customer', desc: 'Order laundry services' },
+        { value: 'customer', label: '👤 Customer', desc: 'Order laundry services' },
         { value: 'rider', label: '🛵 Rider', desc: 'Deliver orders' },
     ];
 

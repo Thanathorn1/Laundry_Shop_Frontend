@@ -12,14 +12,18 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+    const [userName, setUserName] = useState('Customer');
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
-    const userName = typeof window !== 'undefined' ? localStorage.getItem('userName') || 'Customer' : 'Customer';
 
     useEffect(() => {
         const token = localStorage.getItem('token');
+        const savedName = localStorage.getItem('userName');
+
+        if (savedName) setUserName(savedName);
         if (!token) { router.push('/login'); return; }
+
         api.get('/orders/my').then(({ data }) => setOrders(data)).catch(() => { }).finally(() => setLoading(false));
     }, []);
 

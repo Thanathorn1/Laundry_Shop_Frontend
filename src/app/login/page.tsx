@@ -22,6 +22,11 @@ export default function LoginPage() {
             localStorage.setItem('userRole', data.role);
             localStorage.setItem('userId', data._id);
 
+            // Set cookies for Next.js Middleware
+            document.cookie = `token=${data.token}; path=/; max-age=2592000`; // 30 days
+            document.cookie = `userRole=${data.role}; path=/; max-age=2592000`;
+            document.cookie = `riderStatus=${data.riderStatus || 'approved'}; path=/; max-age=2592000`;
+
             if (data.role === 'admin') router.push('/admin');
             else if (data.role === 'rider') router.push('/rider');
             else router.push('/dashboard');

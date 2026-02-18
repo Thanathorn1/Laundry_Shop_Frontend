@@ -1,56 +1,113 @@
 "use client";
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 
-export default function AdminRidersPage() {
-    const [riders, setRiders] = useState<any[]>([]);
+interface Rider {
+    _id: string;
+    name: string;
+    email: string;
+    phone: string;
+    riderStatus: string;
+    createdAt: string;
+}
+
+export default function RiderApprovalPage() {
+    const [riders, setRiders] = useState<Rider[]>([]);
     const [loading, setLoading] = useState(true);
-    const router = useRouter();
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        const role = localStorage.getItem('userRole');
-        if (role !== 'admin') { router.push('/login'); return; }
-        api.get('/admin/riders').catch(() => ({ data: [] })).then(({ data }) => setRiders(data)).finally(() => setLoading(false));
+        fetchPendingRiders();
     }, []);
 
+    const fetchPendingRiders = async () => {
+        try {
+            setLoading(true);
+            const { data } = await api.get('/admin/riders/pending');
+            setRiders(data);
+        } catch (err: any) {
+            setError('Failed to fetch pending riders');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAction = async (id: string, action: 'approve' | 'reject') => {
+        try {
+            await api.put(`/admin/riders/${id}/${action}`);
+            setRiders(riders.filter(r => r._id !== id));
+            alert(`Rider ${action === 'approve' ? 'approved' : 'rejected'} successfully!`);
+        } catch (err: any) {
+            alert('Failed to process request');
+        }
+    };
+
     return (
-        <div className="min-h-screen pt-20 pb-12 px-4 bg-[#F8FAFF]">
-            <div className="max-w-5xl mx-auto">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-black text-gray-800">Riders</h1>
-                    <p className="text-gray-500 mt-1">Manage your delivery team</p>
+        <div className="min-h-screen pt-24 pb-12 px-4 bg-[#F8FAFF]">
+            <div className="max-w-6xl mx-auto">
+                <div className="flex justify-between items-center mb-8">
+                    <div>
+                        <h1 className="text-3xl font-black text-gray-800">Rider Approval</h1>
+                        <p className="text-gray-500">Manage pending rider applications</p>
+                    </div>
                 </div>
 
                 {loading ? (
-                    <div className="text-center py-20 text-gray-400">⏳ Loading...</div>
+                    <div className="flex justify-center py-20">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                    </div>
+                ) : error ? (
+                    <div className="bg-red-50 text-red-600 p-4 rounded-2xl border border-red-100">{error}</div>
                 ) : riders.length === 0 ? (
-                    <div className="bg-white rounded-3xl shadow-blue-sm border border-blue-50 p-16 text-center">
-                        <div className="text-6xl mb-4">🛵</div>
-                        <h3 className="text-xl font-bold text-gray-700 mb-2">No Riders Yet</h3>
-                        <p className="text-gray-500">Riders will appear here once they register with the rider role.</p>
+                    <div className="bg-white rounded-3xl p-12 text-center border border-blue-50 shadow-blue-sm">
+                        <div className="text-5xl mb-4">✅</div>
+                        <h3 className="text-xl font-bold text-gray-800">No pending riders</h3>
+                        <p className="text-gray-500">All rider applications have been processed.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {riders.map((rider: any) => (
-                            <div key={rider._id} className="bg-white rounded-2xl p-6 shadow-blue-sm border border-blue-50 card-hover">
-                                <div className="flex items-center space-x-4 mb-4">
-                                    <div className="w-12 h-12 gradient-blue rounded-xl flex items-center justify-center text-xl shadow-blue-sm">🛵</div>
-                                    <div>
-                                        <h3 className="font-bold text-gray-800">{rider.name}</h3>
-                                        <span className="badge-rider text-xs">Rider</span>
-                                    </div>
-                                </div>
-                                <div className="space-y-2 text-sm text-gray-600">
-                                    <div className="flex items-center space-x-2">
-                                        <span>📧</span><span>{rider.email}</span>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <span>📞</span><span>{rider.phone || 'N/A'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                    <div className="bg-white rounded-3xl overflow-hidden shadow-blue-sm border border-blue-50">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 border-b border-blue-50">
+                                <tr>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase">Rider Info</th>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase">Contact</th>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase">Applied Date</th>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-blue-50">
+                                {riders.map((rider) => (
+                                    <tr key={rider._id} className="hover:bg-blue-50/30 transition">
+                                        <td className="px-6 py-4">
+                                            <div className="font-bold text-gray-800">{rider.name}</div>
+                                            <div className="text-xs text-gray-500">{rider.email}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm text-gray-700">{rider.phone}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm text-gray-500">{new Date(rider.createdAt).toLocaleDateString()}</div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end space-x-2">
+                                                <button
+                                                    onClick={() => handleAction(rider._id, 'approve')}
+                                                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition shadow-sm"
+                                                >
+                                                    Approve
+                                                </button>
+                                                <button
+                                                    onClick={() => handleAction(rider._id, 'reject')}
+                                                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition shadow-sm"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 )}
             </div>

@@ -32,27 +32,38 @@ export default function Navbar() {
     };
 
     const getNavLinks = () => {
-        if (!user) return null;
+        if (!user) return (
+            <>
+                <Link href="/" className="text-gray-600 hover:text-primary font-medium transition">Home</Link>
+                <Link href="/#services" className="text-gray-600 hover:text-primary font-medium transition">Services</Link>
+            </>
+        );
+
         if (user.role === 'admin') return (
             <>
                 <Link href="/admin" className="text-gray-600 hover:text-primary font-medium transition">Dashboard</Link>
-                <Link href="/admin/shops" className="text-gray-600 hover:text-primary font-medium transition">Shops</Link>
                 <Link href="/admin/orders" className="text-gray-600 hover:text-primary font-medium transition">Orders</Link>
-                <Link href="/admin/riders" className="text-gray-600 hover:text-primary font-medium transition">Riders</Link>
+                <Link href="/admin/services" className="text-gray-600 hover:text-primary font-medium transition">Pricing</Link>
+                <Link href="/admin/shops" className="text-gray-600 hover:text-primary font-medium transition">Shops</Link>
+                <Link href="/admin/riders" className="text-gray-600 hover:text-primary font-medium transition">Rider Approval</Link>
             </>
         );
+
         if (user.role === 'rider') return (
             <>
                 <Link href="/rider" className="text-gray-600 hover:text-primary font-medium transition">Dashboard</Link>
-                <Link href="/rider/orders" className="text-gray-600 hover:text-primary font-medium transition">My Jobs</Link>
+                <Link href="/rider/jobs" className="text-gray-600 hover:text-primary font-medium transition">Available Jobs</Link>
+                <Link href="/rider/deliveries" className="text-gray-600 hover:text-primary font-medium transition">My Deliveries</Link>
+                <Link href="/rider/earnings" className="text-gray-600 hover:text-primary font-medium transition">Earnings</Link>
             </>
         );
+
         return (
             <>
-                <Link href="/dashboard" className="text-gray-600 hover:text-primary font-medium transition">Dashboard</Link>
-                <Link href="/order" className="text-gray-600 hover:text-primary font-medium transition">Order</Link>
-                <Link href="/track" className="text-gray-600 hover:text-primary font-medium transition">Track</Link>
-                <Link href="/book" className="text-gray-600 hover:text-primary font-medium transition">Book Machine</Link>
+                <Link href="/" className="text-gray-600 hover:text-primary font-medium transition">Home</Link>
+                <Link href="/order" className="text-gray-600 hover:text-primary font-medium transition">Create Order</Link>
+                <Link href="/dashboard" className="text-gray-600 hover:text-primary font-medium transition">My Orders</Link>
+                <Link href="/track" className="text-gray-600 hover:text-primary font-medium transition">Track Order</Link>
             </>
         );
     };
