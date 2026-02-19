@@ -27,6 +27,9 @@ type SavedAddress = {
   address: string;
   coordinates: number[];
   isDefault: boolean;
+  contactPhone?: string;
+  pickupType?: 'now' | 'schedule';
+  pickupAt?: string | null;
 };
 
 type LatLng = { lat: number; lng: number };
@@ -94,6 +97,7 @@ export default function CreateOrderPage() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<LeafletMap | null>(null);
   const markerRef = useRef<LeafletMarker | null>(null);
+  const hasTriedAutoLocationRef = useRef(false);
 
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
@@ -113,6 +117,28 @@ export default function CreateOrderPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted || hasTriedAutoLocationRef.current) return;
+    hasTriedAutoLocationRef.current = true;
+
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setPickupLatitude(String(position.coords.latitude));
+        setPickupLongitude(String(position.coords.longitude));
+      },
+      () => {
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }, [hasMounted]);
 
   const canSubmit = useMemo(
     () =>
@@ -321,6 +347,9 @@ export default function CreateOrderPage() {
             latitude: pickupLat,
             longitude: pickupLng,
             isDefault: false,
+            contactPhone: contactPhone.trim() || undefined,
+            pickupType,
+            pickupAt: pickupAt || null,
           }),
         });
 
@@ -354,6 +383,10 @@ export default function CreateOrderPage() {
       setIsLoading(false);
     }
   };
+
+  if (!hasMounted) {
+    return <div className="min-h-screen bg-slate-50 p-6 text-blue-900" />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-blue-900">
@@ -414,6 +447,21 @@ export default function CreateOrderPage() {
                     if (Array.isArray(item.coordinates) && item.coordinates.length >= 2) {
                       setPickupLongitude(String(item.coordinates[0]));
                       setPickupLatitude(String(item.coordinates[1]));
+                    }
+                    if (typeof item.contactPhone === 'string' && item.contactPhone.trim()) {
+                      setContactPhone(item.contactPhone);
+                    }
+                    if (item.pickupType === 'schedule') {
+                      setPickupType('schedule');
+                      if (item.pickupAt) {
+                        const d = new Date(item.pickupAt);
+                        if (!Number.isNaN(d.getTime())) {
+                          setPickupDate(d.toISOString().slice(0, 10));
+                          setPickupTime(d.toISOString().slice(11, 16));
+                        }
+                      }
+                    } else {
+                      setPickupType('now');
                     }
                   }}
                   className="rounded-xl border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50"
