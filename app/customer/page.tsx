@@ -118,8 +118,13 @@ export default function CustomerPage() {
     const [editPickupTime, setEditPickupTime] = useState('');
     const [editSaving, setEditSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [isAdminSession, setIsAdminSession] = useState(false);
 
     useEffect(() => {
+        const authRole = localStorage.getItem('auth_role');
+        const legacyRole = localStorage.getItem('user_role');
+        setIsAdminSession(authRole === 'admin' || legacyRole === 'admin');
+
         async function fetchData() {
             try {
                 const [ordersData, profileData] = await Promise.all([
@@ -134,6 +139,8 @@ export default function CustomerPage() {
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
                     localStorage.removeItem('user_role');
+                    localStorage.removeItem('auth_role');
+                    localStorage.removeItem('view_role');
                     router.replace('/');
                     return;
                 }
@@ -520,6 +527,27 @@ export default function CustomerPage() {
                         <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">📅</span>
                         History
                     </Link>
+                    {isAdminSession && (
+                        <>
+                            <div className="px-4 pt-4 text-[10px] font-black text-blue-300 uppercase tracking-widest">Admin</div>
+                            <Link href="/admin" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">📊</span>
+                                Dashboard
+                            </Link>
+                            <Link href="/admin/customers" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">👤</span>
+                                Customer List
+                            </Link>
+                            <Link href="/admin/riders" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🛵</span>
+                                Rider List
+                            </Link>
+                            <Link href="/admin/pin-shop" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">📍</span>
+                                Pin Shop
+                            </Link>
+                        </>
+                    )}
                     <div className="pt-6 mt-6 border-t border-slate-100">
                         <button
                             onClick={() => {

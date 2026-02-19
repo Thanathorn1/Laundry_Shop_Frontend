@@ -19,14 +19,18 @@ export default function AdminPage() {
                         <span className="mr-3 text-lg">📊</span>
                         Dashboard
                     </Link>
-                    <button className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
-                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">📦</span>
-                        Manage Orders
-                    </button>
-                    <button className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
-                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">👥</span>
-                        Manage Users
-                    </button>
+                    <Link href="/admin/customers" className="flex items-center rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">👤</span>
+                        Customer List
+                    </Link>
+                    <Link href="/admin/riders" className="flex items-center rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">🛵</span>
+                        Rider List
+                    </Link>
+                    <Link href="/admin/pin-shop" className="flex items-center rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">📍</span>
+                        Pin Shop
+                    </Link>
                 </nav>
             </aside>
 

@@ -13,11 +13,26 @@ interface Order {
     totalPrice: number;
 }
 
+interface Shop {
+    _id: string;
+    shopName?: string;
+    label?: string;
+    phoneNumber?: string;
+    photoImage?: string;
+    distanceKm?: number | null;
+    location?: {
+        type: string;
+        coordinates: number[];
+    };
+}
+
 export default function RiderDashboard() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+    const [shops, setShops] = useState<Shop[]>([]);
+    const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
     const mapRef = useRef<any>(null);
 
     useEffect(() => {
@@ -33,9 +48,19 @@ export default function RiderDashboard() {
                         lat: position.coords.latitude,
                         lon: position.coords.longitude
                     });
+                    fetchNearbyShops(position.coords.latitude, position.coords.longitude);
                 },
                 (err) => console.error("Geolocation error:", err)
             );
+        }
+    };
+
+    const fetchNearbyShops = async (lat: number, lon: number) => {
+        try {
+            const data = await apiFetch(`/map/shops/nearby?lat=${lat}&lng=${lon}&maxDistanceKm=8`);
+            setShops(Array.isArray(data) ? data : []);
+        } catch {
+            setShops([]);
         }
     };
 
@@ -89,6 +114,34 @@ export default function RiderDashboard() {
                 title: 'Your Location'
             }));
         }
+
+        shops.forEach((shop: Shop) => {
+            const coords = shop.location?.coordinates;
+            if (!Array.isArray(coords) || coords.length < 2) return;
+
+            map.Overlays.add(
+                new window.longdo.Marker(
+                    { lat: coords[1], lon: coords[0] },
+                    {
+                        title: shop.shopName || shop.label || 'Laundry Shop',
+                        detail: `${shop.phoneNumber || '-'}${shop.distanceKm ? ` • ${shop.distanceKm.toFixed(2)} km` : ''}`,
+                    },
+                ),
+            );
+        });
+    };
+
+    const chooseShop = (shop: Shop) => {
+        setSelectedShopId(shop._id);
+        const coords = shop.location?.coordinates;
+        if (!mapRef.current || !Array.isArray(coords) || coords.length < 2) return;
+
+        const point = { lat: coords[1], lon: coords[0] };
+        mapRef.current.location(point);
+        mapRef.current.Overlays.add(new window.longdo.Marker(point, {
+            title: shop.shopName || shop.label || 'Selected Shop',
+            detail: shop.phoneNumber || '-',
+        }));
     };
 
     if (loading) return (
@@ -148,6 +201,38 @@ export default function RiderDashboard() {
                 <div className="absolute top-4 right-4 z-10">
                     {/* Add Map Controls if needed */}
                 </div>
+            </div>
+
+            <div className="rounded-3xl border border-white bg-white p-6 shadow-xl shadow-blue-100/30">
+                <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-black text-blue-900">Nearby Laundry Shops</h2>
+                    <span className="text-xs font-black uppercase tracking-widest text-blue-400">{shops.length} shops</span>
+                </div>
+
+                {shops.length === 0 ? (
+                    <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-blue-700/70">No nearby pinned shop yet.</p>
+                ) : (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {shops.map((shop) => (
+                            <div key={shop._id} className={`rounded-2xl border p-4 ${selectedShopId === shop._id ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-white'}`}>
+                                {shop.photoImage ? (
+                                    <img src={shop.photoImage} alt={shop.shopName || 'Shop'} className="mb-3 h-28 w-full rounded-xl object-cover" />
+                                ) : (
+                                    <div className="mb-3 flex h-28 items-center justify-center rounded-xl bg-slate-100 text-3xl">🏬</div>
+                                )}
+                                <h3 className="text-sm font-black text-blue-900">{shop.shopName || shop.label || 'Laundry Shop'}</h3>
+                                <p className="mt-1 text-xs font-semibold text-blue-600">☎ {shop.phoneNumber || '-'}</p>
+                                <p className="mt-1 text-xs font-semibold text-blue-500">{shop.distanceKm != null ? `${shop.distanceKm.toFixed(2)} km away` : '-'}</p>
+                                <button
+                                    onClick={() => chooseShop(shop)}
+                                    className="mt-3 w-full rounded-xl border border-blue-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-blue-700 hover:bg-blue-100"
+                                >
+                                    {selectedShopId === shop._id ? 'Selected' : 'Choose Shop'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {orders.length === 0 ? (

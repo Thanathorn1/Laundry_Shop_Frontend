@@ -2,11 +2,27 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 
 export default function CustomerProfileSetupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-50 p-6 text-blue-900">
+          <main className="mx-auto w-full max-w-2xl rounded-[2rem] border border-white bg-white p-8 shadow-2xl shadow-blue-100/50">
+            <p className="text-sm font-semibold text-blue-600">Loading profile...</p>
+          </main>
+        </div>
+      }
+    >
+      <CustomerProfileSetupContent />
+    </Suspense>
+  );
+}
+
+function CustomerProfileSetupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo") ?? "/customer/create-order";
@@ -40,6 +56,8 @@ export default function CustomerProfileSetupPage() {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("user_role");
+        localStorage.removeItem("auth_role");
+        localStorage.removeItem("view_role");
         router.push("/");
         return;
       }

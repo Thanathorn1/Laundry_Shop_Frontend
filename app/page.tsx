@@ -4,13 +4,32 @@ import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 
-type LoginRole = "user" | "rider" | "admin";
+type LoginRole = "user" | "rider";
+type AuthRole = "user" | "rider" | "admin";
 type AuthMode = "signin" | "signup";
 
 type SignInResponse = {
   access_token: string;
   refresh_token: string;
 };
+
+function getRoleFromAccessToken(token: string): AuthRole | null {
+  try {
+    const payloadBase64 = token.split(".")[1];
+    if (!payloadBase64) return null;
+
+    const normalized = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(normalized);
+    const parsed = JSON.parse(json) as { role?: string };
+
+    if (parsed.role === "admin" || parsed.role === "rider" || parsed.role === "user") {
+      return parsed.role;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function Home() {
   const router = useRouter();
@@ -54,12 +73,15 @@ export default function Home() {
       const data = (await response.json()) as SignInResponse;
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
-      localStorage.setItem("user_role", role);
+      const authRole = getRoleFromAccessToken(data.access_token) ?? role;
+      const viewRole: LoginRole = authRole === "admin" ? role : authRole;
+
+      localStorage.setItem("auth_role", authRole);
+      localStorage.setItem("view_role", viewRole);
+      localStorage.setItem("user_role", viewRole);
       setMessage(mode === "signup" ? "Signup successful" : "Login successful");
 
-      if (role === "admin") {
-        router.push("/admin");
-      } else if (role === "rider") {
+      if (viewRole === "rider") {
         router.push("/rider");
       } else {
         router.push("/customer");
@@ -147,7 +169,7 @@ export default function Home() {
 
           <div className="space-y-4">
             <label className="block text-[10px] font-black text-blue-300 uppercase tracking-widest leading-none text-center">Identity Role</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setRole("user")}
@@ -167,16 +189,6 @@ export default function Home() {
                   }`}
               >
                 Rider
-              </button>
-              <button
-                type="button"
-                onClick={() => setRole("admin")}
-                className={`rounded-xl border-2 px-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${role === "admin"
-                  ? "border-blue-600 bg-blue-600 text-white shadow-xl shadow-blue-200"
-                  : "border-slate-100 bg-slate-50 text-blue-400 hover:border-slate-200 hover:bg-white"
-                  }`}
-              >
-                Admin
               </button>
             </div>
           </div>
