@@ -20,6 +20,9 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      throw new Error('Unauthorized. Please login again.');
+    }
     throw new Error(errorData.message || 'Something went wrong');
   }
 

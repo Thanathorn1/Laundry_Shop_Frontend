@@ -109,7 +109,7 @@ export default function Home() {
           </button>
         </div>
 
-        <form className="space-y-4" onSubmit={onSubmit}>
+        <form className="space-y-4" onSubmit={onSubmit} suppressHydrationWarning>
           <div>
             <label
               htmlFor="email"
@@ -121,6 +121,7 @@ export default function Home() {
               id="email"
               type="email"
               required
+              suppressHydrationWarning
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
@@ -139,6 +140,7 @@ export default function Home() {
               type="password"
               required
               minLength={8}
+              suppressHydrationWarning
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
