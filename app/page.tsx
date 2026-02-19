@@ -12,6 +12,24 @@ type SignInResponse = {
   refresh_token: string;
 };
 
+function getRoleFromAccessToken(token: string): LoginRole | null {
+  try {
+    const payloadBase64 = token.split(".")[1];
+    if (!payloadBase64) return null;
+
+    const normalized = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(normalized);
+    const parsed = JSON.parse(json) as { role?: string };
+
+    if (parsed.role === "admin" || parsed.role === "rider" || parsed.role === "user") {
+      return parsed.role;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -55,6 +73,10 @@ export default function Home() {
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
       localStorage.setItem("user_role", role);
+      const authRole = getRoleFromAccessToken(data.access_token);
+      if (authRole) {
+        localStorage.setItem("auth_role", authRole);
+      }
       setMessage(mode === "signup" ? "Signup successful" : "Login successful");
 
       if (role === "admin") {

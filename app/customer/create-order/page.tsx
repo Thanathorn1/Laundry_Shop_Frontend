@@ -176,6 +176,7 @@ export default function CreateOrderPage() {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           localStorage.removeItem('user_role');
+          localStorage.removeItem('auth_role');
           router.push('/');
           return;
         }
@@ -371,6 +372,7 @@ export default function CreateOrderPage() {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user_role');
+        localStorage.removeItem('auth_role');
         router.push('/');
         return;
       }
