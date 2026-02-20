@@ -121,9 +121,8 @@ export default function CustomerPage() {
     const [isAdminSession, setIsAdminSession] = useState(false);
 
     useEffect(() => {
-        const authRole = localStorage.getItem('auth_role');
-        const legacyRole = localStorage.getItem('user_role');
-        setIsAdminSession(authRole === 'admin' || legacyRole === 'admin');
+        const userRole = localStorage.getItem('user_role');
+        setIsAdminSession(userRole === 'admin');
 
         async function fetchData() {
             try {
@@ -139,7 +138,6 @@ export default function CustomerPage() {
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
                     localStorage.removeItem('user_role');
-                    localStorage.removeItem('auth_role');
                     localStorage.removeItem('view_role');
                     router.replace('/');
                     return;

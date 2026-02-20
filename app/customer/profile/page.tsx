@@ -56,7 +56,6 @@ function CustomerProfileSetupContent() {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("user_role");
-        localStorage.removeItem("auth_role");
         localStorage.removeItem("view_role");
         router.push("/");
         return;
