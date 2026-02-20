@@ -18,11 +18,33 @@ function getRoleFromAccessToken(token: string): LoginRole | null {
     if (!payloadBase64) return null;
 
     const normalized = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(normalized);
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    const json = atob(padded);
     const parsed = JSON.parse(json) as { role?: string };
 
     if (parsed.role === "admin" || parsed.role === "rider" || parsed.role === "user") {
       return parsed.role;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveAuthRole(accessToken: string, apiBaseUrl: string): Promise<LoginRole | null> {
+  const tokenRole = getRoleFromAccessToken(accessToken);
+  if (tokenRole) return tokenRole;
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/customers/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { role?: string };
+    if (data.role === "admin" || data.role === "rider" || data.role === "user") {
+      return data.role;
     }
     return null;
   } catch {
@@ -72,16 +94,27 @@ export default function Home() {
       const data = (await response.json()) as SignInResponse;
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
-      localStorage.setItem("user_role", role);
-      const authRole = getRoleFromAccessToken(data.access_token);
+      const authRole = await resolveAuthRole(data.access_token, apiBaseUrl);
       if (authRole) {
+        localStorage.setItem("user_role", authRole);
         localStorage.setItem("auth_role", authRole);
+      } else {
+        localStorage.removeItem("user_role");
+        localStorage.removeItem("auth_role");
       }
       setMessage(mode === "signup" ? "Signup successful" : "Login successful");
 
-      if (role === "admin") {
-        router.push("/admin");
-      } else if (role === "rider") {
+      const finalRole = authRole ?? role;
+
+      if (finalRole === "admin") {
+        if (role === "rider") {
+          router.push("/rider");
+        } else if (role === "user") {
+          router.push("/customer");
+        } else {
+          router.push("/admin");
+        }
+      } else if (finalRole === "rider") {
         router.push("/rider");
       } else {
         router.push("/customer");

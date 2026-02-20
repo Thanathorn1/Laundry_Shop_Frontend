@@ -338,7 +338,7 @@ export default function AdminPinShopPage() {
       setBackLabel("← Back to Customer");
     }
 
-    const authRole = localStorage.getItem("auth_role") || localStorage.getItem("user_role");
+    const authRole = localStorage.getItem("auth_role");
     if (authRole !== "admin") {
       router.replace("/");
       return;

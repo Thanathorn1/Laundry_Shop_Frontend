@@ -18,7 +18,7 @@ type AdminUser = {
   address?: string;
 };
 
-export default function AdminCustomersPage() {
+export default function AdminAdminsPage() {
   const router = useRouter();
   const [items, setItems] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,10 +31,10 @@ export default function AdminCustomersPage() {
 
   const load = async () => {
     try {
-      const data = (await apiFetch("/customers/admin/customers")) as AdminUser[];
+      const data = (await apiFetch("/customers/admin/admins")) as AdminUser[];
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load customers");
+      setError(e instanceof Error ? e.message : "Failed to load admins");
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,7 @@ export default function AdminCustomersPage() {
   }, [router]);
 
   const applyUpdatedUser = (updated: AdminUser) => {
-    if (updated.role !== "user") {
+    if (updated.role !== "admin") {
       setItems((prev) => prev.filter((item) => item._id !== updated._id));
       return;
     }
@@ -206,8 +206,8 @@ export default function AdminCustomersPage() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tight">Customer List</h1>
-            <p className="text-sm text-blue-700/60">Users with role: user</p>
+            <h1 className="text-3xl font-black tracking-tight">Admin List</h1>
+            <p className="text-sm text-blue-700/60">Users with role: admin</p>
             <div className="mt-3 inline-flex rounded-xl border border-blue-100 bg-white p-1">
               <button
                 onClick={() => setListMode("all")}
@@ -237,11 +237,11 @@ export default function AdminCustomersPage() {
         <div className="overflow-hidden rounded-3xl border border-white bg-white shadow-2xl shadow-blue-100/40">
           {message && <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700">{message}</div>}
           {loading ? (
-            <div className="p-8 text-sm font-semibold text-blue-500">Loading customers...</div>
+            <div className="p-8 text-sm font-semibold text-blue-500">Loading admins...</div>
           ) : error ? (
             <div className="p-8 text-sm font-semibold text-rose-500">{error}</div>
           ) : filteredItems.length === 0 ? (
-            <div className="p-8 text-sm font-semibold text-blue-500">No customers found for this list.</div>
+            <div className="p-8 text-sm font-semibold text-blue-500">No admins found for this list.</div>
           ) : (
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-widest text-blue-400">
