@@ -287,99 +287,18 @@ export default function RiderDashboard() {
     );
 
     return (
-        <div className="flex flex-col h-full gap-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-black text-blue-900 tracking-tight">Available Orders</h1>
-                    <p className="text-blue-700/60 text-sm font-medium">Find laundry tasks nearby and start earning.</p>
-                </div>
-                {userLocation && (
-                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-full border border-blue-100 group">
-                        <div className="h-2 w-2 bg-blue-600 rounded-full animate-pulse"></div>
-                        <span className="text-[10px] text-blue-700 font-black uppercase tracking-widest">GPS Active</span>
-                    </div>
-                )}
+        <div className="h-screen w-full relative bg-slate-100">
+            <div ref={mapContainerRef} className="h-full w-full" />
+
+            <div className="absolute left-6 top-6 z-[500] rounded-2xl bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+                <h1 className="text-2xl font-black text-blue-900 tracking-tight">Available Orders</h1>
+                <p className="text-blue-700/60 text-xs font-semibold">{orders.length} orders • {shops.length} shops nearby</p>
             </div>
 
-            <div className="h-[450px] w-full overflow-hidden rounded-3xl border-4 border-white bg-white shadow-xl shadow-slate-200/50 relative">
-                <div ref={mapContainerRef} className="h-full w-full" />
-                <div className="absolute top-4 right-4 z-10">
-                    {/* Add Map Controls if needed */}
-                </div>
-            </div>
-
-            <div className="rounded-3xl border border-white bg-white p-6 shadow-xl shadow-blue-100/30">
-                <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-black text-blue-900">Nearby Laundry Shops</h2>
-                    <span className="text-xs font-black uppercase tracking-widest text-blue-400">{shops.length} shops</span>
-                </div>
-
-                {shops.length === 0 ? (
-                    <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-blue-700/70">No nearby pinned shop yet.</p>
-                ) : (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {shops.map((shop) => (
-                            <div key={shop._id} className={`rounded-2xl border p-4 ${selectedShopId === shop._id ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-white'}`}>
-                                {shop.photoImage ? (
-                                    <img src={shop.photoImage} alt={shop.shopName || 'Shop'} className="mb-3 h-28 w-full rounded-xl object-cover" />
-                                ) : (
-                                    <div className="mb-3 flex h-28 items-center justify-center rounded-xl bg-slate-100 text-3xl">🏬</div>
-                                )}
-                                <h3 className="text-sm font-black text-blue-900">{shop.shopName || shop.label || 'Laundry Shop'}</h3>
-                                <p className="mt-1 text-xs font-semibold text-blue-600">☎ {shop.phoneNumber || '-'}</p>
-                                <p className="mt-1 text-xs font-semibold text-blue-500">{shop.distanceKm != null ? `${shop.distanceKm.toFixed(2)} km away` : '-'}</p>
-                                <button
-                                    onClick={() => chooseShop(shop)}
-                                    className="mt-3 w-full rounded-xl border border-blue-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-blue-700 hover:bg-blue-100"
-                                >
-                                    {selectedShopId === shop._id ? 'Selected' : 'Choose Shop'}
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {orders.length === 0 ? (
-                <div className="bg-white rounded-2xl p-12 text-center border border-slate-100 shadow-sm">
-                    <p className="text-slate-400 font-bold text-lg">No orders available at the moment.</p>
-                </div>
-            ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {orders.map((order: Order) => (
-                        <div key={order._id} className="group rounded-3xl border border-slate-100 bg-white p-6 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
-                            <div className="absolute top-0 right-0 h-24 w-24 bg-blue-50 rounded-bl-full -mr-8 -mt-8 group-hover:bg-blue-600/5 transition-colors"></div>
-
-                            <div className="relative">
-                                <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-lg font-black text-blue-900 leading-tight">{order.customerName}</h3>
-                                    <span className="px-3 py-1 bg-blue-600 text-[10px] font-black text-white rounded-full shadow-lg shadow-blue-200 uppercase tracking-tighter">Fast</span>
-                                </div>
-                                <div className="space-y-3 mb-6">
-                                    <div className="text-xs text-blue-400 font-bold flex flex-col gap-1">
-                                        <span className="text-[10px] uppercase tracking-widest text-blue-600">Pickup</span>
-                                        <span className="text-blue-900 line-clamp-2">{order.pickupAddress}</span>
-                                    </div>
-                                    <div className="text-xs text-blue-400 font-bold flex flex-col gap-1">
-                                        <span className="text-[10px] uppercase tracking-widest text-sky-500">Delivery</span>
-                                        <span className="text-blue-900 line-clamp-2">{order.deliveryAddress}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-50 relative">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-blue-300 uppercase tracking-wider">Earnings</span>
-                                    <span className="text-2xl font-black text-blue-900">฿{order.totalPrice}</span>
-                                </div>
-                                <button
-                                    onClick={() => acceptOrder(order._id)}
-                                    className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-black text-white hover:bg-blue-700 active:scale-95 transition-all shadow-xl shadow-blue-100 hover:shadow-blue-200"
-                                >
-                                    Accept
-                                </button>
-                            </div>
-                        </div>
-                    ))}
+            {userLocation && (
+                <div className="absolute right-6 top-6 z-[500] flex items-center gap-2 rounded-full border border-blue-100 bg-white/95 px-4 py-2 shadow backdrop-blur">
+                    <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse"></div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-700">GPS Active</span>
                 </div>
             )}
         </div>

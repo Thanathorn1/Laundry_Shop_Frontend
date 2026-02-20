@@ -1,7 +1,6 @@
 "use client";
 
 import Link from 'next/link';
-import Script from 'next/script';
 
 export default function RiderLayout({
     children,

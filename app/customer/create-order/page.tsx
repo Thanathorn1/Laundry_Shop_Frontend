@@ -19,6 +19,8 @@ type CreateOrderPayload = {
 };
 
 type CustomerProfile = {
+  firstName?: string;
+  lastName?: string;
   phoneNumber?: string;
 };
 
@@ -101,6 +103,8 @@ export default function CreateOrderPage() {
 
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [basketPhotos, setBasketPhotos] = useState<File[]>([]);
   const [basketPhotoPreviews, setBasketPhotoPreviews] = useState<string[]>([]);
@@ -118,6 +122,7 @@ export default function CreateOrderPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [hasMounted, setHasMounted] = useState(false);
+  const [mustCompleteProfile, setMustCompleteProfile] = useState(false);
 
   useEffect(() => {
     setHasMounted(true);
@@ -143,6 +148,7 @@ export default function CreateOrderPage() {
   const canSubmit = useMemo(
     () =>
       Boolean(
+        (!mustCompleteProfile || (firstName.trim() && lastName.trim())) &&
         productName.trim() &&
           contactPhone.trim() &&
           pickupLatitude.trim() &&
@@ -151,7 +157,7 @@ export default function CreateOrderPage() {
           !Number.isNaN(Number(pickupLongitude)) &&
           (pickupType === 'now' || (pickupDate.trim() && pickupTime.trim())),
       ),
-    [productName, contactPhone, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
+    [mustCompleteProfile, firstName, lastName, productName, contactPhone, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
   );
 
   useEffect(() => {
@@ -160,10 +166,21 @@ export default function CreateOrderPage() {
         setIsLoadingSaved(true);
         const profile = await apiFetch('/customers/me');
         if (profile && typeof profile === 'object') {
+          const fName = (profile as CustomerProfile).firstName;
+          const lName = (profile as CustomerProfile).lastName;
           const phone = (profile as CustomerProfile).phoneNumber;
+          if (typeof fName === 'string') {
+            setFirstName(fName);
+          }
+          if (typeof lName === 'string') {
+            setLastName(lName);
+          }
           if (typeof phone === 'string') {
             setContactPhone(phone);
           }
+
+          const profileMissing = !String(fName ?? '').trim() || !String(lName ?? '').trim() || !String(phone ?? '').trim();
+          setMustCompleteProfile(profileMissing);
         }
 
         const data = await apiFetch("/customers/saved-addresses");
@@ -334,6 +351,19 @@ export default function CreateOrderPage() {
 
     try {
       setIsLoading(true);
+
+      if (mustCompleteProfile) {
+        await apiFetch('/customers/register', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phoneNumber: contactPhone.trim(),
+          }),
+        });
+        setMustCompleteProfile(false);
+      }
+
       await apiFetch("/customers/orders", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -481,6 +511,39 @@ export default function CreateOrderPage() {
         <p className="-mt-3 mb-5 text-xs font-semibold text-blue-700/70">Drag marker or click on map to change pickup location.</p>
 
         <form className="space-y-4" onSubmit={onSubmit}>
+          {mustCompleteProfile && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="mb-3 text-xs font-black uppercase tracking-widest text-amber-700">
+                Add customer info first
+              </p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-bold">First Name</label>
+                  <input
+                    required
+                    value={firstName}
+                    onChange={(event) => setFirstName(event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+                    placeholder="Your first name"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-bold">Last Name</label>
+                  <input
+                    required
+                    value={lastName}
+                    onChange={(event) => setLastName(event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+                    placeholder="Your last name"
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-xs font-semibold text-amber-700/80">
+                These details are required before placing your first order.
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="mb-1 block text-sm font-bold">Product Name</label>
             <input

@@ -59,7 +59,9 @@ export default function Home() {
   const [role, setRole] = useState<LoginRole>("user");
   const [mode, setMode] = useState<AuthMode>("signin");
   const [isLoading, setIsLoading] = useState(false);
+  const [isForgotLoading, setIsForgotLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const apiBaseUrl = useMemo(() => API_BASE_URL, []);
@@ -125,6 +127,47 @@ export default function Home() {
       setError(submitMessage);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const onForgotPassword = async () => {
+    setError(null);
+    setMessage(null);
+    setForgotMessage(null);
+
+    if (!email.trim()) {
+      setError("Please enter your email first");
+      return;
+    }
+
+    setIsForgotLoading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/auth/forgot-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const failedData = (await response.json().catch(() => ({}))) as {
+          message?: string | string[];
+        };
+        const backendMessage = Array.isArray(failedData.message)
+          ? failedData.message[0]
+          : failedData.message;
+        throw new Error(backendMessage ?? "Failed to send reset email");
+      }
+
+      const data = (await response.json()) as { message?: string };
+      setForgotMessage(data.message ?? "If this email exists, a reset link has been sent.");
+    } catch (forgotError) {
+      const forgotMessage =
+        forgotError instanceof Error ? forgotError.message : "Failed to send reset email";
+      setError(forgotMessage);
+    } finally {
+      setIsForgotLoading(false);
     }
   };
 
@@ -198,6 +241,18 @@ export default function Home() {
               onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
             />
+            {mode === "signin" && (
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={onForgotPassword}
+                  disabled={isForgotLoading}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                >
+                  {isForgotLoading ? "Sending..." : "Forgot password?"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -259,6 +314,11 @@ export default function Home() {
         {message && (
           <p className="mt-4 rounded-md bg-emerald-100 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
             {message}
+          </p>
+        )}
+        {forgotMessage && (
+          <p className="mt-4 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            {forgotMessage}
           </p>
         )}
         {error && (
