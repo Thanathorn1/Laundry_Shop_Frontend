@@ -2,7 +2,63 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import LongdoMap from '@/components/LongdoMap';
+
+type LeafletMarker = {
+    addTo: (map: LeafletMap) => LeafletMarker;
+    bindPopup: (content: string) => LeafletMarker;
+    remove: () => void;
+};
+
+type LeafletMap = {
+    setView: (center: [number, number], zoom: number) => void;
+    invalidateSize: () => void;
+    remove: () => void;
+};
+
+type LeafletLib = {
+    map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
+    tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
+    marker: (latLng: [number, number]) => LeafletMarker;
+};
+
+const DEFAULT_CENTER: [number, number] = [13.7563, 100.5018];
+
+async function loadLeaflet() {
+    if (typeof window === 'undefined') return null;
+    const w = window as unknown as { L?: LeafletLib };
+    if (w.L) return w.L;
+
+    if (!document.querySelector('link[data-leaflet="true"]')) {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        css.setAttribute('data-leaflet', 'true');
+        document.head.appendChild(css);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
+        if (existing) {
+            if ((window as any).L) {
+                resolve();
+                return;
+            }
+            existing.addEventListener('load', () => resolve());
+            existing.addEventListener('error', () => reject(new Error('Failed to load leaflet')));
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.async = true;
+        script.setAttribute('data-leaflet', 'true');
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load leaflet'));
+        document.body.appendChild(script);
+    });
+
+    return (window as unknown as { L?: LeafletLib }).L ?? null;
+}
 
 interface Task {
     _id: string;
@@ -17,7 +73,10 @@ export default function MyTasks() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const mapRef = useRef<any>(null);
+    const mapContainerRef = useRef<HTMLDivElement | null>(null);
+    const mapRef = useRef<LeafletMap | null>(null);
+    const leafletRef = useRef<LeafletLib | null>(null);
+    const markersRef = useRef<LeafletMarker[]>([]);
 
     useEffect(() => {
         fetchTasks();
@@ -53,23 +112,67 @@ export default function MyTasks() {
         }
     };
 
-    const onMapLoad = (map: any) => {
-        mapRef.current = map;
-        tasks.forEach((task: Task) => {
-            // Mocking location
-            const mockLat = 13.7563 + (Math.random() - 0.5) * 0.05;
-            const mockLon = 100.5018 + (Math.random() - 0.5) * 0.05;
+    useEffect(() => {
+        if (loading || tasks.length === 0) return;
+        let mounted = true;
 
-            map.Overlays.add(new window.longdo.Marker({ lat: mockLat, lon: mockLon }, {
-                title: task.customerName,
-                detail: task.pickupAddress
-            }));
+        const setupMap = async () => {
+            const L = await loadLeaflet();
+            if (!mounted || !L || !mapContainerRef.current || mapRef.current) return;
 
-            if (tasks.length === 1) {
-                map.location({ lat: mockLat, lon: mockLon });
+            leafletRef.current = L;
+            const map = L.map(mapContainerRef.current, {
+                center: DEFAULT_CENTER,
+                zoom: 13,
+            });
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+            }).addTo(map);
+
+            mapRef.current = map;
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 50);
+        };
+
+        setupMap();
+
+        return () => {
+            mounted = false;
+            markersRef.current.forEach((marker) => marker.remove());
+            markersRef.current = [];
+            if (mapRef.current) mapRef.current.remove();
+            mapRef.current = null;
+        };
+    }, [loading, tasks.length]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        const L = leafletRef.current;
+        if (!map || !L) return;
+
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 0);
+
+        markersRef.current.forEach((marker) => marker.remove());
+        markersRef.current = [];
+
+        tasks.forEach((task: Task, index) => {
+            const mockLat = DEFAULT_CENTER[0] + (((index % 5) - 2) * 0.01);
+            const mockLng = DEFAULT_CENTER[1] + ((Math.floor(index / 5) - 1) * 0.01);
+
+            const marker = L.marker([mockLat, mockLng])
+                .bindPopup(`<b>${task.customerName}</b><br/>${task.pickupAddress || '-'}`)
+                .addTo(map);
+            markersRef.current.push(marker);
+
+            if (index === 0) {
+                map.setView([mockLat, mockLng], 14);
             }
         });
-    };
+    }, [tasks]);
 
     if (loading) return <div className="text-zinc-600 dark:text-zinc-400">Loading your tasks...</div>;
     if (error) return <div className="text-rose-600 dark:text-rose-400">Error: {error}</div>;
@@ -83,7 +186,7 @@ export default function MyTasks() {
 
             {tasks.length > 0 && (
                 <div className="h-[350px] w-full overflow-hidden rounded-3xl border-4 border-white bg-white shadow-xl shadow-slate-200/50">
-                    <LongdoMap id="tasks-map" callback={onMapLoad} />
+                    <div ref={mapContainerRef} className="h-full w-full" />
                 </div>
             )}
 

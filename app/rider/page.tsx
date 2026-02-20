@@ -2,7 +2,65 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import LongdoMap from '@/components/LongdoMap';
+
+type LatLng = { lat: number; lng: number };
+
+type LeafletMarker = {
+    addTo: (map: LeafletMap) => LeafletMarker;
+    bindPopup: (content: string) => LeafletMarker;
+    remove: () => void;
+};
+
+type LeafletMap = {
+    setView: (center: [number, number], zoom: number) => void;
+    invalidateSize: () => void;
+    remove: () => void;
+};
+
+type LeafletLib = {
+    map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
+    tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
+    marker: (latLng: [number, number]) => LeafletMarker;
+};
+
+const DEFAULT_CENTER: LatLng = { lat: 13.7563, lng: 100.5018 };
+
+async function loadLeaflet() {
+    if (typeof window === 'undefined') return null;
+    const w = window as unknown as { L?: LeafletLib };
+    if (w.L) return w.L;
+
+    if (!document.querySelector('link[data-leaflet="true"]')) {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        css.setAttribute('data-leaflet', 'true');
+        document.head.appendChild(css);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
+        if (existing) {
+            if ((window as any).L) {
+                resolve();
+                return;
+            }
+            existing.addEventListener('load', () => resolve());
+            existing.addEventListener('error', () => reject(new Error('Failed to load leaflet')));
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.async = true;
+        script.setAttribute('data-leaflet', 'true');
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load leaflet'));
+        document.body.appendChild(script);
+    });
+
+    return (window as unknown as { L?: LeafletLib }).L ?? null;
+}
 
 interface Order {
     _id: string;
@@ -30,10 +88,15 @@ export default function RiderDashboard() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+    const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
     const [shops, setShops] = useState<Shop[]>([]);
     const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
-    const mapRef = useRef<any>(null);
+    const mapContainerRef = useRef<HTMLDivElement | null>(null);
+    const mapRef = useRef<LeafletMap | null>(null);
+    const leafletRef = useRef<LeafletLib | null>(null);
+    const orderMarkersRef = useRef<LeafletMarker[]>([]);
+    const shopMarkersRef = useRef<LeafletMarker[]>([]);
+    const selectedMarkerRef = useRef<LeafletMarker | null>(null);
 
     useEffect(() => {
         fetchOrders();
@@ -46,7 +109,7 @@ export default function RiderDashboard() {
                 (position) => {
                     setUserLocation({
                         lat: position.coords.latitude,
-                        lon: position.coords.longitude
+                        lng: position.coords.longitude
                     });
                     fetchNearbyShops(position.coords.latitude, position.coords.longitude);
                 },
@@ -91,57 +154,99 @@ export default function RiderDashboard() {
         }
     };
 
-    const onMapLoad = (map: any) => {
-        mapRef.current = map;
-        // Add markers for orders (using mock coordinates for now as requested)
-        orders.forEach((order: Order) => {
-            // Mocking coordinates near center of Bangkok for demo
-            const mockLat = 13.7563 + (Math.random() - 0.5) * 0.1;
-            const mockLon = 100.5018 + (Math.random() - 0.5) * 0.1;
+    useEffect(() => {
+        if (loading) return;
+        let mounted = true;
 
-            map.Overlays.add(new window.longdo.Marker({ lat: mockLat, lon: mockLon }, {
-                title: order.customerName,
-                detail: order.pickupAddress
-            }));
+        const setupMap = async () => {
+            const L = await loadLeaflet();
+            if (!mounted || !L || !mapContainerRef.current || mapRef.current) return;
+
+            leafletRef.current = L;
+            const map = L.map(mapContainerRef.current, {
+                center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
+                zoom: 13,
+            });
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+            }).addTo(map);
+
+            mapRef.current = map;
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 50);
+        };
+
+        setupMap();
+
+        return () => {
+            mounted = false;
+            orderMarkersRef.current.forEach((marker) => marker.remove());
+            shopMarkersRef.current.forEach((marker) => marker.remove());
+            selectedMarkerRef.current?.remove();
+            orderMarkersRef.current = [];
+            shopMarkersRef.current = [];
+            selectedMarkerRef.current = null;
+            if (mapRef.current) mapRef.current.remove();
+            mapRef.current = null;
+        };
+    }, [loading]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        const L = leafletRef.current;
+        if (!map || !L) return;
+
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 0);
+
+        orderMarkersRef.current.forEach((marker) => marker.remove());
+        shopMarkersRef.current.forEach((marker) => marker.remove());
+        orderMarkersRef.current = [];
+        shopMarkersRef.current = [];
+
+        orders.forEach((order: Order, index) => {
+            const mockLat = DEFAULT_CENTER.lat + (((index % 5) - 2) * 0.01);
+            const mockLng = DEFAULT_CENTER.lng + ((Math.floor(index / 5) - 1) * 0.01);
+            const marker = L.marker([mockLat, mockLng])
+                .bindPopup(`<b>${order.customerName}</b><br/>${order.pickupAddress || '-'}`)
+                .addTo(map);
+            orderMarkersRef.current.push(marker);
         });
 
         if (userLocation) {
-            map.location(userLocation);
-            map.Overlays.add(new window.longdo.Marker(userLocation, {
-                icon: {
-                    url: 'https://map.longdo.com/mmmap/images/pin_mark.png'
-                },
-                title: 'Your Location'
-            }));
+            const marker = L.marker([userLocation.lat, userLocation.lng])
+                .bindPopup('<b>Your Location</b>')
+                .addTo(map);
+            orderMarkersRef.current.push(marker);
+            map.setView([userLocation.lat, userLocation.lng], 14);
         }
 
-        shops.forEach((shop: Shop) => {
+        shops.forEach((shop) => {
             const coords = shop.location?.coordinates;
             if (!Array.isArray(coords) || coords.length < 2) return;
 
-            map.Overlays.add(
-                new window.longdo.Marker(
-                    { lat: coords[1], lon: coords[0] },
-                    {
-                        title: shop.shopName || shop.label || 'Laundry Shop',
-                        detail: `${shop.phoneNumber || '-'}${shop.distanceKm ? ` • ${shop.distanceKm.toFixed(2)} km` : ''}`,
-                    },
-                ),
-            );
+            const marker = L.marker([coords[1], coords[0]])
+                .bindPopup(`<b>${shop.shopName || shop.label || 'Laundry Shop'}</b><br/>${shop.phoneNumber || '-'}`)
+                .addTo(map);
+            shopMarkersRef.current.push(marker);
         });
-    };
+    }, [orders, shops, userLocation]);
 
     const chooseShop = (shop: Shop) => {
         setSelectedShopId(shop._id);
         const coords = shop.location?.coordinates;
-        if (!mapRef.current || !Array.isArray(coords) || coords.length < 2) return;
+        const map = mapRef.current;
+        const L = leafletRef.current;
+        if (!map || !L || !Array.isArray(coords) || coords.length < 2) return;
 
-        const point = { lat: coords[1], lon: coords[0] };
-        mapRef.current.location(point);
-        mapRef.current.Overlays.add(new window.longdo.Marker(point, {
-            title: shop.shopName || shop.label || 'Selected Shop',
-            detail: shop.phoneNumber || '-',
-        }));
+        selectedMarkerRef.current?.remove();
+        selectedMarkerRef.current = L.marker([coords[1], coords[0]])
+            .bindPopup(`<b>${shop.shopName || shop.label || 'Selected Shop'}</b><br/>${shop.phoneNumber || '-'}`)
+            .addTo(map);
+        map.setView([coords[1], coords[0]], 15);
     };
 
     if (loading) return (
@@ -197,7 +302,7 @@ export default function RiderDashboard() {
             </div>
 
             <div className="h-[450px] w-full overflow-hidden rounded-3xl border-4 border-white bg-white shadow-xl shadow-slate-200/50 relative">
-                <LongdoMap id="rider-map" callback={onMapLoad} />
+                <div ref={mapContainerRef} className="h-full w-full" />
                 <div className="absolute top-4 right-4 z-10">
                     {/* Add Map Controls if needed */}
                 </div>
