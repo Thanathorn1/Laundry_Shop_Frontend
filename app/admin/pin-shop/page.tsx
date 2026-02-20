@@ -11,6 +11,7 @@ type LatLng = { lat: number; lng: number };
 type LeafletMarker = {
   addTo: (map: LeafletMap) => LeafletMarker;
   bindPopup: (content: string) => LeafletMarker;
+  openPopup: () => LeafletMarker;
   on: (event: string, handler: () => void) => void;
   getLatLng: () => LatLng;
   setLatLng: (latLng: [number, number] | LatLng) => void;
@@ -86,6 +87,7 @@ type Shop = {
   label?: string;
   phoneNumber?: string;
   photoImage?: string;
+  createdAt?: string;
   location?: {
     type: string;
     coordinates: number[];
@@ -103,6 +105,7 @@ export default function AdminPinShopPage() {
   const editMapRef = useRef<LeafletMap | null>(null);
   const editMarkerRef = useRef<LeafletMarker | null>(null);
   const shopMarkersRef = useRef<LeafletMarker[]>([]);
+  const markerByShopIdRef = useRef<Record<string, LeafletMarker>>({});
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,6 +113,8 @@ export default function AdminPinShopPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [backHref, setBackHref] = useState("/admin");
   const [backLabel, setBackLabel] = useState("← Back to Admin");
+  const [search, setSearch] = useState("");
+  const [sortMode, setSortMode] = useState<"alpha-asc" | "alpha-desc" | "newest" | "oldest">("alpha-asc");
 
   const [shopName, setShopName] = useState("");
   const [label, setLabel] = useState("");
@@ -184,6 +189,7 @@ export default function AdminPinShopPage() {
       mapRef.current = null;
       selectedMarkerRef.current = null;
       shopMarkersRef.current = [];
+      markerByShopIdRef.current = {};
     };
   }, [isClient]);
 
@@ -206,6 +212,7 @@ export default function AdminPinShopPage() {
 
     shopMarkersRef.current.forEach((marker) => marker.remove());
     shopMarkersRef.current = [];
+    markerByShopIdRef.current = {};
 
     const markers: LeafletMarker[] = [];
     for (const shop of shops) {
@@ -236,6 +243,7 @@ export default function AdminPinShopPage() {
         setEditLat(String(shopLat));
       });
       markers.push(marker);
+      markerByShopIdRef.current[shop._id] = marker;
     }
 
     shopMarkersRef.current = markers;
@@ -251,6 +259,34 @@ export default function AdminPinShopPage() {
       }
     }
   }, [shops]);
+
+  const filteredAndSortedShops = shops
+    .filter((shop) => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      const name = (shop.shopName || shop.label || '').toLowerCase();
+      return name.includes(q);
+    })
+    .sort((a, b) => {
+      const aName = a.shopName || a.label || '';
+      const bName = b.shopName || b.label || '';
+
+      if (sortMode === 'alpha-asc') return aName.localeCompare(bName);
+      if (sortMode === 'alpha-desc') return bName.localeCompare(aName);
+
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (sortMode === 'newest') return bTime - aTime;
+      return aTime - bTime;
+    });
+
+  const focusShopOnMap = (shop: Shop) => {
+    const coords = shop.location?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2 || !mapRef.current) return;
+
+    mapRef.current.setView([Number(coords[1]), Number(coords[0])], 15);
+    markerByShopIdRef.current[shop._id]?.openPopup();
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -336,6 +372,9 @@ export default function AdminPinShopPage() {
     if (from === "customer") {
       setBackHref("/customer");
       setBackLabel("← Back to Customer");
+    } else if (from === "employee") {
+      setBackHref("/employee");
+      setBackLabel("← Back to Employee");
     }
 
     const authRole = localStorage.getItem("auth_role");
@@ -519,20 +558,38 @@ export default function AdminPinShopPage() {
 
         <div className="mt-6 rounded-3xl border border-white bg-white p-6 shadow-2xl shadow-blue-100/40">
           <h2 className="mb-4 text-lg font-black text-blue-900">Pinned Shops</h2>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search shop name"
+              className="rounded-xl border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-blue-900"
+            />
+            <select
+              value={sortMode}
+              onChange={(event) => setSortMode(event.target.value as "alpha-asc" | "alpha-desc" | "newest" | "oldest")}
+              className="rounded-xl border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-blue-900"
+            >
+              <option value="alpha-asc">A-Z</option>
+              <option value="alpha-desc">Z-A</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+          </div>
           {loading ? (
             <p className="text-sm font-semibold text-blue-600">Loading shops...</p>
-          ) : shops.length === 0 ? (
+          ) : filteredAndSortedShops.length === 0 ? (
             <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-blue-700/70">No shop added yet.</p>
           ) : (
             <div className="space-y-3">
-              {shops.map((shop) => {
+              {filteredAndSortedShops.map((shop) => {
                 const coords = shop.location?.coordinates;
                 const lat = Array.isArray(coords) && coords.length >= 2 ? coords[1] : null;
                 const lng = Array.isArray(coords) && coords.length >= 2 ? coords[0] : null;
                 const isEditing = editingId === shop._id;
 
                 return (
-                  <div key={shop._id} className="rounded-2xl border border-slate-100 p-4">
+                  <div key={shop._id} className="rounded-2xl border border-slate-100 p-4" onClick={() => !isEditing && focusShopOnMap(shop)}>
                     {isEditing ? (
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                         <div className="md:col-span-2">

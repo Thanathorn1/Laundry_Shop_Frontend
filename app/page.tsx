@@ -4,7 +4,8 @@ import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 
-type LoginRole = "user" | "rider" | "admin";
+type LoginRole = "user" | "rider" | "admin" | "employee";
+type SelectableRole = "user" | "rider" | "employee";
 type AuthMode = "signin" | "signup";
 
 type SignInResponse = {
@@ -22,7 +23,7 @@ function getRoleFromAccessToken(token: string): LoginRole | null {
     const json = atob(padded);
     const parsed = JSON.parse(json) as { role?: string };
 
-    if (parsed.role === "admin" || parsed.role === "rider" || parsed.role === "user") {
+    if (parsed.role === "admin" || parsed.role === "rider" || parsed.role === "user" || parsed.role === "employee") {
       return parsed.role;
     }
     return null;
@@ -43,7 +44,7 @@ async function resolveAuthRole(accessToken: string, apiBaseUrl: string): Promise
     });
     if (!response.ok) return null;
     const data = (await response.json()) as { role?: string };
-    if (data.role === "admin" || data.role === "rider" || data.role === "user") {
+    if (data.role === "admin" || data.role === "rider" || data.role === "user" || data.role === "employee") {
       return data.role;
     }
     return null;
@@ -56,7 +57,8 @@ export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<LoginRole>("user");
+  const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState<SelectableRole>("user");
   const [mode, setMode] = useState<AuthMode>("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [isForgotLoading, setIsForgotLoading] = useState(false);
@@ -111,13 +113,17 @@ export default function Home() {
       if (finalRole === "admin") {
         if (role === "rider") {
           router.push("/rider");
+        } else if (role === "employee") {
+          router.push("/employee");
         } else if (role === "user") {
           router.push("/customer");
         } else {
-          router.push("/admin");
+          router.push("/customer");
         }
       } else if (finalRole === "rider") {
         router.push("/rider");
+      } else if (finalRole === "employee") {
+        router.push("/employee");
       } else {
         router.push("/customer");
       }
@@ -231,16 +237,26 @@ export default function Home() {
             >
               Password
             </label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              suppressHydrationWarning
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={8}
+                suppressHydrationWarning
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 pr-11 text-zinc-900 outline-none focus:border-zinc-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-500 hover:text-zinc-700"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
             {mode === "signin" && (
               <div className="mt-2 text-right">
                 <button
@@ -280,13 +296,13 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={() => setRole("admin")}
-                className={`rounded-xl border-2 px-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${role === "admin"
+                onClick={() => setRole("employee")}
+                className={`rounded-xl border-2 px-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${role === "employee"
                   ? "border-blue-600 bg-blue-600 text-white shadow-xl shadow-blue-200"
                   : "border-slate-100 bg-slate-50 text-blue-400 hover:border-slate-200 hover:bg-white"
                   }`}
               >
-                Admin
+                Employee
               </button>
             </div>
           </div>

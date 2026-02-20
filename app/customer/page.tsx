@@ -89,7 +89,7 @@ interface Order {
     _id: string;
     productName: string;
     contactPhone: string;
-    status: 'pending' | 'assigned' | 'picked_up' | 'completed' | 'cancelled';
+    status: 'pending' | 'assigned' | 'picked_up' | 'at_shop' | 'washing' | 'laundry_done' | 'out_for_delivery' | 'completed' | 'cancelled';
     pickupAddress: string | null;
     pickupType: 'now' | 'schedule';
     pickupAt: string | null;
@@ -114,6 +114,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     pending: { label: 'Pending', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', icon: '⏳' },
     assigned: { label: 'Assigned', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: '🚴' },
     picked_up: { label: 'Picked Up', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200', icon: '📦' },
+    at_shop: { label: 'At Shop', color: 'text-fuchsia-700', bg: 'bg-fuchsia-50 border-fuchsia-200', icon: '🏪' },
+    washing: { label: 'Washing', color: 'text-cyan-700', bg: 'bg-cyan-50 border-cyan-200', icon: '🧺' },
+    laundry_done: { label: 'Laundry Done', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: '✨' },
+    out_for_delivery: { label: 'Out for Delivery', color: 'text-sky-700', bg: 'bg-sky-50 border-sky-200', icon: '🛵' },
     completed: { label: 'Completed', color: 'text-green-700', bg: 'bg-green-50 border-green-200', icon: '✅' },
     cancelled: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-50 border-red-200', icon: '❌' },
 };
@@ -691,6 +695,10 @@ export default function CustomerPage() {
                             <Link href="/admin/admins?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
                                 <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🛡️</span>
                                 Admin List
+                            </Link>
+                            <Link href="/admin/employees?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🧑‍🔧</span>
+                                Employee List
                             </Link>
                             <Link href="/admin/pin-shop?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
                                 <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">📍</span>

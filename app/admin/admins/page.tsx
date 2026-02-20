@@ -9,6 +9,7 @@ type AdminUser = {
   _id: string;
   email: string;
   role: "user" | "rider" | "admin";
+  createdAt?: string;
   isBanned?: boolean;
   banStartAt?: string | null;
   banEndAt?: string | null;
@@ -26,6 +27,8 @@ export default function AdminAdminsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
   const [listMode, setListMode] = useState<"all" | "whitelist" | "blacklist">("all");
+  const [search, setSearch] = useState("");
+  const [sortMode, setSortMode] = useState<"alpha-asc" | "alpha-desc" | "newest" | "oldest">("alpha-asc");
   const [backHref, setBackHref] = useState("/admin");
   const [backLabel, setBackLabel] = useState("← Back to Admin");
 
@@ -45,6 +48,9 @@ export default function AdminAdminsPage() {
     if (from === "customer") {
       setBackHref("/customer");
       setBackLabel("← Back to Customer");
+    } else if (from === "employee") {
+      setBackHref("/employee");
+      setBackLabel("← Back to Employee");
     }
 
     const authRole = localStorage.getItem("auth_role");
@@ -189,9 +195,25 @@ export default function AdminAdminsPage() {
   };
 
   const filteredItems = items.filter((item) => {
+    const q = search.trim().toLowerCase();
+    const fullName = `${item.firstName || ""} ${item.lastName || ""}`.trim().toLowerCase();
+    const matchesSearch = !q || fullName.includes(q) || (item.email || "").toLowerCase().includes(q);
+    if (!matchesSearch) return false;
+
     if (listMode === "whitelist") return !item.isBanned;
     if (listMode === "blacklist") return Boolean(item.isBanned);
     return true;
+  }).sort((a, b) => {
+    const aName = `${a.firstName || ""} ${a.lastName || ""}`.trim() || a.email || "";
+    const bName = `${b.firstName || ""} ${b.lastName || ""}`.trim() || b.email || "";
+
+    if (sortMode === "alpha-asc") return aName.localeCompare(bName);
+    if (sortMode === "alpha-desc") return bName.localeCompare(aName);
+
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (sortMode === "newest") return bTime - aTime;
+    return aTime - bTime;
   });
 
   const formatDate = (value?: string | null) => {
@@ -208,7 +230,25 @@ export default function AdminAdminsPage() {
           <div>
             <h1 className="text-3xl font-black tracking-tight">Admin List</h1>
             <p className="text-sm text-blue-700/60">Users with role: admin</p>
-            <div className="mt-3 inline-flex rounded-xl border border-blue-100 bg-white p-1">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search name/email"
+                className="rounded-xl border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-blue-900"
+              />
+              <select
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as "alpha-asc" | "alpha-desc" | "newest" | "oldest")}
+                className="rounded-xl border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-blue-900"
+              >
+                <option value="alpha-asc">A-Z</option>
+                <option value="alpha-desc">Z-A</option>
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+              </select>
+            </div>
+            <div className="mt-2 inline-flex rounded-xl border border-blue-100 bg-white p-1">
               <button
                 onClick={() => setListMode("all")}
                 className={`rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-widest ${listMode === "all" ? "bg-blue-600 text-white" : "text-blue-700 hover:bg-blue-50"}`}

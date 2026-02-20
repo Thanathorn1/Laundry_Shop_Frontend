@@ -69,10 +69,19 @@ interface Task {
     totalPrice: number;
 }
 
+interface Shop {
+    _id: string;
+    shopName?: string;
+    label?: string;
+    location?: { coordinates: number[] };
+}
+
 export default function MyTasks() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [shops, setShops] = useState<Shop[]>([]);
+    const [selectedShopId, setSelectedShopId] = useState<string>('');
     const mapContainerRef = useRef<HTMLDivElement | null>(null);
     const mapRef = useRef<LeafletMap | null>(null);
     const leafletRef = useRef<LeafletLib | null>(null);
@@ -80,6 +89,20 @@ export default function MyTasks() {
 
     useEffect(() => {
         fetchTasks();
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                try {
+                    const data = await apiFetch(`/map/shops/nearby?lat=${position.coords.latitude}&lng=${position.coords.longitude}&maxDistanceKm=12`);
+                    if (Array.isArray(data)) {
+                        setShops(data as Shop[]);
+                        if (data.length > 0 && data[0]?._id) {
+                            setSelectedShopId(data[0]._id);
+                        }
+                    }
+                } catch {
+                }
+            });
+        }
     }, []);
 
     const fetchTasks = async () => {
@@ -104,6 +127,35 @@ export default function MyTasks() {
                 method: 'PATCH',
                 body: JSON.stringify({ status: newStatus }),
             });
+            fetchTasks();
+        } catch (err: unknown) {
+            if (err instanceof Error) {
+                alert(err.message);
+            }
+        }
+    };
+
+    const handoverToShop = async (orderId: string) => {
+        if (!selectedShopId) {
+            alert('Please select a shop first');
+            return;
+        }
+        try {
+            await apiFetch(`/rider/handover/${orderId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ shopId: selectedShopId }),
+            });
+            fetchTasks();
+        } catch (err: unknown) {
+            if (err instanceof Error) {
+                alert(err.message);
+            }
+        }
+    };
+
+    const startReturnDelivery = async (orderId: string) => {
+        try {
+            await apiFetch(`/rider/return-delivery/${orderId}`, { method: 'PATCH' });
             fetchTasks();
         } catch (err: unknown) {
             if (err instanceof Error) {
@@ -184,6 +236,20 @@ export default function MyTasks() {
                 <p className="text-blue-700/60 text-sm font-medium">Manage your active deliveries and update statuses.</p>
             </div>
 
+            <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-blue-300">Target Shop (for handover)</label>
+                <select
+                    className="w-full rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-blue-900 outline-none focus:border-blue-500"
+                    value={selectedShopId}
+                    onChange={(e) => setSelectedShopId(e.target.value)}
+                >
+                    {shops.length === 0 && <option value="">No nearby shop found</option>}
+                    {shops.map((shop) => (
+                        <option key={shop._id} value={shop._id}>{shop.shopName || shop.label || shop._id}</option>
+                    ))}
+                </select>
+            </div>
+
             {tasks.length > 0 && (
                 <div className="h-[350px] w-full overflow-hidden rounded-3xl border-4 border-white bg-white shadow-xl shadow-slate-200/50">
                     <div ref={mapContainerRef} className="h-full w-full" />
@@ -235,19 +301,41 @@ export default function MyTasks() {
                                     >
                                         <option value="accepted">Order Accepted</option>
                                         <option value="picked-up">Picked Up (Wash/Dry)</option>
+                                        <option value="at_shop">At Shop</option>
+                                        <option value="washing">Washing</option>
+                                        <option value="laundry_done">Laundry Done</option>
+                                        <option value="out_for_delivery">Out for Delivery</option>
                                         <option value="delivered">Delivered to Customer</option>
                                     </select>
                                 </div>
-                                <button
-                                    onClick={() => {
-                                        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการยกเลิกงานนี้?')) {
-                                            updateStatus(task._id, 'cancelled');
-                                        }
-                                    }}
-                                    className="sm:self-end rounded-xl bg-rose-50 px-6 py-3 text-sm font-black text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all"
-                                >
-                                    Cancel Task
-                                </button>
+                                <div className="sm:self-end flex flex-wrap gap-2">
+                                    {(task.status === 'picked_up' || task.status === 'picked-up') && (
+                                        <button
+                                            onClick={() => handoverToShop(task._id)}
+                                            className="rounded-xl bg-amber-50 px-4 py-3 text-xs font-black uppercase tracking-widest text-amber-700 hover:bg-amber-100 transition-all"
+                                        >
+                                            Send to Shop
+                                        </button>
+                                    )}
+                                    {task.status === 'laundry_done' && (
+                                        <button
+                                            onClick={() => startReturnDelivery(task._id)}
+                                            className="rounded-xl bg-emerald-50 px-4 py-3 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-100 transition-all"
+                                        >
+                                            Deliver Back
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการยกเลิกงานนี้?')) {
+                                                updateStatus(task._id, 'cancelled');
+                                            }
+                                        }}
+                                        className="rounded-xl bg-rose-50 px-4 py-3 text-xs font-black uppercase tracking-widest text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all"
+                                    >
+                                        Cancel Task
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))}
