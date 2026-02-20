@@ -1,9 +1,13 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+const normalizedBaseUrl = rawApiBaseUrl.replace(/\/$/, '');
+export const API_BASE_URL = normalizedBaseUrl.endsWith('/api')
+  ? normalizedBaseUrl
+  : `${normalizedBaseUrl}/api`;
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  const token = localStorage.getItem('access_token');
 
-  if (typeof window !== 'undefined' && !token && endpoint !== '/auth/signin' && endpoint !== '/auth/signup') {
+  if (!token && endpoint !== '/auth/signin' && endpoint !== '/auth/signup') {
     throw new Error('กรุณาล็อคอินใหม่อีกครั้ง (Session Expired)');
   }
 
@@ -20,6 +24,9 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      throw new Error('Unauthorized. Please login again.');
+    }
     throw new Error(errorData.message || 'Something went wrong');
   }
 

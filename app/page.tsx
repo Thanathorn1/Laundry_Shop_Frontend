@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { API_BASE_URL } from "@/lib/api";
 
 type LoginRole = "user" | "rider" | "admin";
 type AuthMode = "signin" | "signup";
@@ -10,6 +11,46 @@ type SignInResponse = {
   access_token: string;
   refresh_token: string;
 };
+
+function getRoleFromAccessToken(token: string): LoginRole | null {
+  try {
+    const payloadBase64 = token.split(".")[1];
+    if (!payloadBase64) return null;
+
+    const normalized = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    const json = atob(padded);
+    const parsed = JSON.parse(json) as { role?: string };
+
+    if (parsed.role === "admin" || parsed.role === "rider" || parsed.role === "user") {
+      return parsed.role;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveAuthRole(accessToken: string, apiBaseUrl: string): Promise<LoginRole | null> {
+  const tokenRole = getRoleFromAccessToken(accessToken);
+  if (tokenRole) return tokenRole;
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/customers/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { role?: string };
+    if (data.role === "admin" || data.role === "rider" || data.role === "user") {
+      return data.role;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function Home() {
   const router = useRouter();
@@ -21,10 +62,7 @@ export default function Home() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const apiBaseUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000",
-    [],
-  );
+  const apiBaseUrl = useMemo(() => API_BASE_URL, []);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -56,12 +94,27 @@ export default function Home() {
       const data = (await response.json()) as SignInResponse;
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
-      localStorage.setItem("user_role", role);
+      const authRole = await resolveAuthRole(data.access_token, apiBaseUrl);
+      if (authRole) {
+        localStorage.setItem("user_role", authRole);
+        localStorage.setItem("auth_role", authRole);
+      } else {
+        localStorage.removeItem("user_role");
+        localStorage.removeItem("auth_role");
+      }
       setMessage(mode === "signup" ? "Signup successful" : "Login successful");
 
-      if (role === "admin") {
-        router.push("/admin");
-      } else if (role === "rider") {
+      const finalRole = authRole ?? role;
+
+      if (finalRole === "admin") {
+        if (role === "rider") {
+          router.push("/rider");
+        } else if (role === "user") {
+          router.push("/customer");
+        } else {
+          router.push("/admin");
+        }
+      } else if (finalRole === "rider") {
         router.push("/rider");
       } else {
         router.push("/customer");
@@ -80,10 +133,10 @@ export default function Home() {
       <main className="w-full max-w-md rounded-[2.5rem] bg-white p-10 shadow-2xl shadow-blue-100/50 border border-white relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-2 bg-blue-600"></div>
         <h1 className="mb-2 text-4xl font-black text-blue-900 text-center tracking-tight">
-          Laundry{mode === "signup" ? <span>+</span> : ""}
+          Laundry{mode === "signup" ? "+" : ""}
         </h1>
         <p className="text-slate-400 text-sm font-bold text-center mb-8 uppercase tracking-widest">
-          {mode === "signup" ? <span>Create Account</span> : <span>Welcome Back</span>}
+          {mode === "signup" ? "Create Account" : "Welcome Back"}
         </p>
 
         <div className="mb-8 grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
@@ -109,7 +162,7 @@ export default function Home() {
           </button>
         </div>
 
-        <form className="space-y-4" onSubmit={onSubmit}>
+        <form className="space-y-4" onSubmit={onSubmit} suppressHydrationWarning>
           <div>
             <label
               htmlFor="email"
@@ -121,6 +174,7 @@ export default function Home() {
               id="email"
               type="email"
               required
+              suppressHydrationWarning
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
@@ -139,6 +193,7 @@ export default function Home() {
               type="password"
               required
               minLength={8}
+              suppressHydrationWarning
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
@@ -193,10 +248,10 @@ export default function Home() {
             )}
             <span className="uppercase tracking-widest">
               {isLoading
-                ? <span>Processing...</span>
+                ? "Processing..."
                 : mode === "signup"
-                  ? <span>Start Journey</span>
-                  : <span>Secure Login</span>}
+                  ? "Start Journey"
+                  : "Secure Login"}
             </span>
           </button>
         </form>
