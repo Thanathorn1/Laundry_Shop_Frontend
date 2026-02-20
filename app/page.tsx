@@ -55,9 +55,14 @@ async function resolveAuthRole(accessToken: string, apiBaseUrl: string): Promise
 
 export default function Home() {
   const router = useRouter();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<SelectableRole>("user");
   const [mode, setMode] = useState<AuthMode>("signin");
   const [isLoading, setIsLoading] = useState(false);
@@ -75,13 +80,30 @@ export default function Home() {
     setIsLoading(true);
 
     try {
+      if (mode === "signup" && password !== confirmPassword) {
+        throw new Error("Password confirmation does not match");
+      }
+
       const endpoint = mode === "signup" ? "signup" : "signin";
+      const payload =
+        mode === "signup"
+          ? {
+            firstName,
+            lastName,
+            phoneNumber,
+            email,
+            password,
+            confirmPassword,
+            role,
+          }
+          : { email, password, role };
+
       const response = await fetch(`${apiBaseUrl}/auth/${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password, role }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -212,6 +234,66 @@ export default function Home() {
         </div>
 
         <form className="space-y-4" onSubmit={onSubmit} suppressHydrationWarning>
+          {mode === "signup" && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="firstName"
+                  className="mb-1 block text-sm font-medium text-zinc-700"
+                >
+                  First Name
+                </label>
+                <input
+                  id="firstName"
+                  type="text"
+                  required
+                  suppressHydrationWarning
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="lastName"
+                  className="mb-1 block text-sm font-medium text-zinc-700"
+                >
+                  Last Name
+                </label>
+                <input
+                  id="lastName"
+                  type="text"
+                  required
+                  suppressHydrationWarning
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {mode === "signup" && (
+            <div>
+              <label
+                htmlFor="phoneNumber"
+                className="mb-1 block text-sm font-medium text-zinc-700"
+              >
+                Phone Number
+              </label>
+              <input
+                id="phoneNumber"
+                type="tel"
+                required
+                suppressHydrationWarning
+                value={phoneNumber}
+                onChange={(event) => setPhoneNumber(event.target.value)}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500"
+              />
+            </div>
+          )}
+
           <div>
             <label
               htmlFor="email"
@@ -270,6 +352,37 @@ export default function Home() {
               </div>
             )}
           </div>
+
+          {mode === "signup" && (
+            <div>
+              <label
+                htmlFor="confirmPassword"
+                className="mb-1 block text-sm font-medium text-zinc-700"
+              >
+                Confirm Password
+              </label>
+              <div className="relative">
+                <input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  suppressHydrationWarning
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 pr-11 text-zinc-900 outline-none focus:border-zinc-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-500 hover:text-zinc-700"
+                  aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                >
+                  {showConfirmPassword ? "🙈" : "👁️"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-4">
             <label className="block text-[10px] font-black text-blue-300 uppercase tracking-widest leading-none text-center">Identity Role</label>
