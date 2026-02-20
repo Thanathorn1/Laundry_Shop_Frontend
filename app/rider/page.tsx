@@ -56,7 +56,7 @@ export default function RiderDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
-    const [maxDistance, setMaxDistance] = useState<number>(10);
+    const [maxDistance, setMaxDistance] = useState<number>(0);
     const [mapView, setMapView] = useState<{ center: [number, number], zoom: number }>({
         center: [13.7563, 100.5018], // Default Bangkok
         zoom: 13
@@ -145,28 +145,44 @@ export default function RiderDashboard() {
     };
 
     useEffect(() => {
-        if (orders.length > 0) {
-            let updatedOrders = orders.map(order => {
-                const orderLat = order.location?.lat || 13.7563 + (Math.random() - 0.5) * 0.1;
-                const orderLon = order.location?.lon || 100.5018 + (Math.random() - 0.5) * 0.1;
+        if (!orders.length) {
+            setFilteredOrders([]);
+            return;
+        }
+
+        const updated = orders
+            .map((order: any) => {
+                const lat = order.pickupLocation?.coordinates?.[1];
+                const lon = order.pickupLocation?.coordinates?.[0];
+
+                if (!lat || !lon) return null;
 
                 let distance = 0;
+
                 if (userLocation) {
-                    distance = calculateDistance(userLocation.lat, userLocation.lon, orderLat, orderLon);
+                    distance = calculateDistance(
+                        userLocation.lat,
+                        userLocation.lon,
+                        lat,
+                        lon
+                    );
                 }
 
                 return {
                     ...order,
-                    location: order.location || { lat: orderLat, lon: orderLon },
+                    location: { lat, lon },
                     distance: parseFloat(distance.toFixed(1))
                 };
-            });
+            })
+            .filter(Boolean);
 
-            const filtered = updatedOrders.filter(order => maxDistance === 0 || (order.distance && order.distance <= maxDistance));
-            setFilteredOrders(filtered);
-        } else {
-            setFilteredOrders([]);
-        }
+        const filtered = updated.filter(
+            (order: any) =>
+                maxDistance === 0 ||
+                (order.distance !== undefined && order.distance <= maxDistance)
+        );
+
+        setFilteredOrders(filtered);
     }, [orders, userLocation, maxDistance]);
 
     const acceptOrder = async (orderId: string) => {
