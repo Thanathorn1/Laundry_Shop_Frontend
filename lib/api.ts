@@ -11,11 +11,17 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     throw new Error('กรุณาล็อคอินใหม่อีกครั้ง (Session Expired)');
   }
 
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    ...options.headers,
-  };
+  // Don't set Content-Type if body is FormData; let browser set it with proper boundary
+  const headers: Record<string, string> = {};
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (options.headers && typeof options.headers === 'object') {
+    Object.assign(headers, options.headers);
+  }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,

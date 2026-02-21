@@ -143,6 +143,11 @@ export default function CustomerPage() {
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
+        if (!token) {
+            router.replace('/');
+            return;
+        }
+
         const tokenRole = getRoleFromAccessToken(token);
         const authRole = localStorage.getItem('auth_role') || tokenRole;
         if (tokenRole && localStorage.getItem('auth_role') !== tokenRole) {
@@ -156,7 +161,7 @@ export default function CustomerPage() {
                     apiFetch('/customers/orders'),
                     apiFetch('/customers/me'),
                 ]);
-                setOrders(ordersData);
+                setOrders(Array.isArray(ordersData) ? ordersData : ordersData?.orders || []);
                 setProfile(profileData);
                 if (profileData?.role === 'admin') {
                     setIsAdminSession(true);
@@ -372,7 +377,7 @@ export default function CustomerPage() {
         );
     };
 
-    const activeOrders = orders.filter(o => !['completed', 'cancelled'].includes(o.status));
+    const activeOrders = (orders || []).filter(o => o.status && !['completed', 'cancelled'].includes(o.status));
     const greeting = profile ? `Hello, ${profile.firstName} ${profile.lastName}!` : 'Hello!';
 
     return (
@@ -550,6 +555,14 @@ export default function CustomerPage() {
                     <Link href="/customer/create-order" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
                         <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">➕</span>
                         New Order
+                    </Link>
+                    <Link href="/customer/orders" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">⭐</span>
+                        My Orders & Ratings
+                    </Link>
+                    <Link href="/customer/settings" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">⚙️</span>
+                        Profile Settings
                     </Link>
                     <Link href="/customer/history" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
                         <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">📅</span>

@@ -23,9 +23,11 @@ type CustomerProfile = {
 };
 
 type SavedAddress = {
+  id?: string;
   label: string;
   address: string;
-  coordinates: number[];
+  latitude: number;
+  longitude: number;
   isDefault: boolean;
   contactPhone?: string;
   pickupType?: 'now' | 'schedule';
@@ -144,17 +146,24 @@ export default function CreateOrderPage() {
     () =>
       Boolean(
         productName.trim() &&
-          contactPhone.trim() &&
-          pickupLatitude.trim() &&
-          pickupLongitude.trim() &&
-          !Number.isNaN(Number(pickupLatitude)) &&
-          !Number.isNaN(Number(pickupLongitude)) &&
-          (pickupType === 'now' || (pickupDate.trim() && pickupTime.trim())),
+        contactPhone.trim() &&
+        pickupLatitude.trim() &&
+        pickupLongitude.trim() &&
+        !Number.isNaN(Number(pickupLatitude)) &&
+        !Number.isNaN(Number(pickupLongitude)) &&
+        (pickupType === 'now' || (pickupDate.trim() && pickupTime.trim())),
       ),
     [productName, contactPhone, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
   );
 
   useEffect(() => {
+    // Check if user is authenticated
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/');
+      return;
+    }
+
     const loadSavedAddresses = async () => {
       try {
         setIsLoadingSaved(true);
@@ -167,9 +176,8 @@ export default function CreateOrderPage() {
         }
 
         const data = await apiFetch("/customers/saved-addresses");
-        if (Array.isArray(data)) {
-          setSavedAddresses(data as SavedAddress[]);
-        }
+        const addressList = Array.isArray(data) ? data : (data?.addresses ?? []);
+        setSavedAddresses(addressList as SavedAddress[]);
       } catch (savedError) {
         const message = savedError instanceof Error ? savedError.message : 'Failed to load saved addresses';
         if (message.toLowerCase().includes('unauthorized')) {
@@ -320,24 +328,59 @@ export default function CreateOrderPage() {
         ? new Date(`${pickupDate}T${pickupTime}:00`).toISOString()
         : undefined;
 
-    const payload: CreateOrderPayload = {
-      productName: productName.trim(),
-      description: description.trim() || undefined,
-      images: basketPhotos.length ? await filesToBase64(basketPhotos) : undefined,
-      contactPhone: contactPhone.trim() || undefined,
-      pickupLatitude: pickupLat,
-      pickupLongitude: pickupLng,
-      pickupAddress: pickupAddress.trim() || undefined,
-      pickupType,
-      pickupAt,
-    };
-
     try {
       setIsLoading(true);
-      await apiFetch("/customers/orders", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+
+      // Use FormData when images are present to avoid payload too large error
+      if (basketPhotos.length > 0) {
+        const formData = new FormData();
+        formData.append('productName', productName.trim());
+        if (description.trim()) formData.append('description', description.trim());
+        formData.append('contactPhone', contactPhone.trim() || '');
+        formData.append('pickupLatitude', String(pickupLat));
+        formData.append('pickupLongitude', String(pickupLng));
+        if (pickupAddress.trim()) formData.append('pickupAddress', pickupAddress.trim());
+        formData.append('pickupType', pickupType);
+        if (pickupAt) formData.append('pickupAt', pickupAt);
+
+        // Append images as files
+        basketPhotos.forEach((file, index) => {
+          formData.append(`images`, file);
+        });
+
+        const token = localStorage.getItem('access_token');
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000'}/api/customers/orders`,
+          {
+            method: 'POST',
+            headers: {
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+            body: formData,
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Failed to create order');
+        }
+      } else {
+        const payload: CreateOrderPayload = {
+          productName: productName.trim(),
+          description: description.trim() || undefined,
+          contactPhone: contactPhone.trim() || undefined,
+          pickupLatitude: pickupLat,
+          pickupLongitude: pickupLng,
+          pickupAddress: pickupAddress.trim() || undefined,
+          pickupType,
+          pickupAt,
+        };
+
+        await apiFetch("/customers/orders", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
 
       if (savePickup && pickupAddress.trim()) {
         await apiFetch('/customers/addresses', {
@@ -355,9 +398,8 @@ export default function CreateOrderPage() {
         });
 
         const data = await apiFetch('/customers/saved-addresses');
-        if (Array.isArray(data)) {
-          setSavedAddresses(data as SavedAddress[]);
-        }
+        const updatedList = Array.isArray(data) ? data : (data?.addresses ?? []);
+        setSavedAddresses(updatedList as SavedAddress[]);
       }
 
       setSuccess("Order created successfully");
@@ -433,44 +475,94 @@ export default function CreateOrderPage() {
         </div>
 
         <div className="mb-6 rounded-2xl border border-slate-200 p-4">
-          <p className="mb-2 text-xs font-black uppercase tracking-widest text-blue-700">Saved Pickup Addresses</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-black uppercase tracking-widest text-blue-700">📍 Saved Pickup Addresses</p>
+            <Link
+              href="/customer/settings"
+              className="text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors"
+            >
+              Manage Addresses →
+            </Link>
+          </div>
           {isLoadingSaved ? (
-            <p className="text-sm text-blue-700/60">Loading saved places...</p>
+            <div className="flex items-center gap-2 py-3">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+              <p className="text-sm text-blue-700/60">Loading saved places...</p>
+            </div>
           ) : savedAddresses.length === 0 ? (
-            <p className="text-sm text-blue-700/60">No saved pickup addresses yet.</p>
+            <div className="flex flex-col items-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+              <span className="text-2xl mb-2">📭</span>
+              <p className="text-sm text-blue-700/60 mb-2">No saved addresses yet</p>
+              <Link
+                href="/customer/settings"
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+              >
+                Add addresses in Profile Settings
+              </Link>
+            </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {savedAddresses.map((item, index) => (
-                <button
-                  key={`${item.label}-${index}`}
-                  type="button"
-                  onClick={() => {
-                    setPickupAddress(item.address ?? '');
-                    if (Array.isArray(item.coordinates) && item.coordinates.length >= 2) {
-                      setPickupLongitude(String(item.coordinates[0]));
-                      setPickupLatitude(String(item.coordinates[1]));
-                    }
-                    if (typeof item.contactPhone === 'string' && item.contactPhone.trim()) {
-                      setContactPhone(item.contactPhone);
-                    }
-                    if (item.pickupType === 'schedule') {
-                      setPickupType('schedule');
-                      if (item.pickupAt) {
-                        const d = new Date(item.pickupAt);
-                        if (!Number.isNaN(d.getTime())) {
-                          setPickupDate(d.toISOString().slice(0, 10));
-                          setPickupTime(d.toISOString().slice(11, 16));
-                        }
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {savedAddresses.map((item, index) => {
+                const isSelected =
+                  pickupAddress === (item.address ?? '') &&
+                  pickupLatitude === String(item.latitude) &&
+                  pickupLongitude === String(item.longitude);
+
+                return (
+                  <button
+                    key={`${item.label}-${index}`}
+                    type="button"
+                    onClick={() => {
+                      setPickupAddress(item.address ?? '');
+                      if (item.latitude != null && item.longitude != null) {
+                        setPickupLatitude(String(item.latitude));
+                        setPickupLongitude(String(item.longitude));
                       }
-                    } else {
-                      setPickupType('now');
-                    }
-                  }}
-                  className="rounded-xl border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50"
-                >
-                  {item.label}
-                </button>
-              ))}
+                      if (typeof item.contactPhone === 'string' && item.contactPhone.trim()) {
+                        setContactPhone(item.contactPhone);
+                      }
+                      if (item.pickupType === 'schedule') {
+                        setPickupType('schedule');
+                        if (item.pickupAt) {
+                          const d = new Date(item.pickupAt);
+                          if (!Number.isNaN(d.getTime())) {
+                            setPickupDate(d.toISOString().slice(0, 10));
+                            setPickupTime(d.toISOString().slice(11, 16));
+                          }
+                        }
+                      } else {
+                        setPickupType('now');
+                      }
+                    }}
+                    className={`relative text-left p-3 rounded-xl border-2 transition-all ${isSelected
+                      ? 'border-blue-500 bg-blue-50 shadow-md shadow-blue-100'
+                      : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/50'
+                      }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-base mt-0.5">{item.isDefault ? '⭐' : '📍'}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-bold text-sm text-blue-900 truncate">{item.label}</span>
+                          {item.isDefault && (
+                            <span className="flex-shrink-0 text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
+                              Default
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="flex-shrink-0 text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full">
+                              ✓ Selected
+                            </span>
+                          )}
+                        </div>
+                        {item.address && (
+                          <p className="text-xs text-blue-700/60 truncate">{item.address}</p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
