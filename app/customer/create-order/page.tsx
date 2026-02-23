@@ -144,12 +144,12 @@ export default function CreateOrderPage() {
     () =>
       Boolean(
         productName.trim() &&
-          contactPhone.trim() &&
-          pickupLatitude.trim() &&
-          pickupLongitude.trim() &&
-          !Number.isNaN(Number(pickupLatitude)) &&
-          !Number.isNaN(Number(pickupLongitude)) &&
-          (pickupType === 'now' || (pickupDate.trim() && pickupTime.trim())),
+        contactPhone.trim() &&
+        pickupLatitude.trim() &&
+        pickupLongitude.trim() &&
+        !Number.isNaN(Number(pickupLatitude)) &&
+        !Number.isNaN(Number(pickupLongitude)) &&
+        (pickupType === 'now' || (pickupDate.trim() && pickupTime.trim())),
       ),
     [productName, contactPhone, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
   );
@@ -267,6 +267,10 @@ export default function CreateOrderPage() {
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [basketPhotos]);
+
+  const removePhoto = (index: number) => {
+    setBasketPhotos(prev => prev.filter((_, i) => i !== index));
+  };
 
   const filesToBase64 = async (files: File[]) => {
     const readers = files.map(
@@ -505,12 +509,19 @@ export default function CreateOrderPage() {
             {basketPhotoPreviews.length > 0 && (
               <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
                 {basketPhotoPreviews.map((previewUrl, index) => (
-                  <div key={`${previewUrl}-${index}`} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  <div key={`${previewUrl}-${index}`} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                     <img
                       src={previewUrl}
                       alt={`Basket preview ${index + 1}`}
                       className="h-24 w-full object-cover"
                     />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(index)}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-600 shadow-md"
+                    >
+                      <span className="text-[10px] font-black">✕</span>
+                    </button>
                   </div>
                 ))}
               </div>

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_BASE_URL } from '@/lib/api';
 
 type LatLng = { lat: number; lng: number };
 
@@ -117,6 +117,7 @@ export default function CustomerPage() {
     const [editPickupDate, setEditPickupDate] = useState('');
     const [editPickupTime, setEditPickupTime] = useState('');
     const [editSaving, setEditSaving] = useState(false);
+    const [editExistingImages, setEditExistingImages] = useState<string[]>([]);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [isAdminSession, setIsAdminSession] = useState(false);
 
@@ -264,8 +265,16 @@ export default function CustomerPage() {
             setEditPickupDate('');
             setEditPickupTime('');
         }
-
+        setEditExistingImages(order.images || []);
         setEditingOrder(order);
+    };
+
+    const removeExistingImage = (index: number) => {
+        setEditExistingImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const removeNewPhoto = (index: number) => {
+        setEditBasketPhotos(prev => prev.filter((_, i) => i !== index));
     };
 
     const saveEdit = async () => {
@@ -301,6 +310,7 @@ export default function CustomerPage() {
                     pickupAddress: editPickupAddress,
                     pickupType: editPickupType,
                     pickupAt,
+                    existingImages: editExistingImages,
                     images: editBasketPhotos.length ? await filesToBase64(editBasketPhotos) : undefined,
                 }),
             });
@@ -326,6 +336,22 @@ export default function CustomerPage() {
         }
     };
 
+    const cancelOrder = async (orderId: string) => {
+        if (!confirm('Are you sure you want to cancel this order?')) return;
+        setDeletingId(orderId);
+        try {
+            await apiFetch(`/customers/orders/${orderId}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({ status: 'cancelled' }),
+            });
+            setOrders(prev => prev.map(o => o._id === orderId ? { ...o, status: 'cancelled' } : o));
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to cancel order');
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
     const useEditCurrentLocation = () => {
         if (!navigator.geolocation) {
             alert('Geolocation is not supported in this browser');
@@ -342,7 +368,10 @@ export default function CustomerPage() {
         );
     };
 
-    const activeOrders = orders.filter(o => !['completed', 'cancelled'].includes(o.status));
+    const activeOrders = orders.filter(o =>
+        !['completed', 'cancelled'].includes(o.status) &&
+        (!profile || (o as any).customerId === (profile as any)._id)
+    );
     const greeting = profile ? `Hello, ${profile.firstName} ${profile.lastName}!` : 'Hello!';
 
     return (
@@ -372,17 +401,39 @@ export default function CustomerPage() {
                                     className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
                                 />
                                 <p className="mt-1 text-xs font-semibold text-blue-700/70">
-                                    Current photos: {editingOrder.images?.length ?? 0}
+                                    Manage images below (Click ✕ to remove)
                                 </p>
-                                {editBasketPreviews.length > 0 && (
-                                    <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-                                        {editBasketPreviews.map((previewUrl, index) => (
-                                            <div key={`${previewUrl}-${index}`} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                                                <img src={previewUrl} alt={`Edit basket preview ${index + 1}`} className="h-20 w-full object-cover" />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+
+                                <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+                                    {/* Existing Images */}
+                                    {editExistingImages.map((img, index) => (
+                                        <div key={`existing-${index}`} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                                            <img src={`${API_BASE_URL}${img}`} alt="Existing" className="h-20 w-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removeExistingImage(index)}
+                                                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-600 shadow-md"
+                                            >
+                                                <span className="text-[10px]">✕</span>
+                                            </button>
+                                        </div>
+                                    ))}
+
+                                    {/* New Images Previews */}
+                                    {editBasketPreviews.map((previewUrl, index) => (
+                                        <div key={`new-${index}`} className="group relative overflow-hidden rounded-xl border border-blue-200 bg-blue-50">
+                                            <img src={previewUrl} alt="New preview" className="h-20 w-full object-cover" />
+                                            <div className="absolute top-1 left-1 bg-blue-600 text-white text-[8px] px-1 rounded font-bold uppercase">New</div>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeNewPhoto(index)}
+                                                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-600 shadow-md"
+                                            >
+                                                <span className="text-[10px]">✕</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             <div>
@@ -622,24 +673,35 @@ export default function CustomerPage() {
                                                     <span className="text-sm font-black text-blue-900">฿{order.totalPrice.toLocaleString()}</span>
                                                 )}
                                             </div>
-                                            {/* Edit / Delete — only for pending orders */}
-                                            {isPending && (
-                                                <div className="flex gap-2 mt-4 pt-3 border-t border-amber-200">
+                                            {/* Actions */}
+                                            <div className="flex gap-2 mt-4 pt-3 border-t border-slate-100">
+                                                {isPending && (
+                                                    <div className="flex gap-2 w-full">
+                                                        <button
+                                                            onClick={() => openEdit(order)}
+                                                            className="flex-1 rounded-xl border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-50 transition-all"
+                                                        >
+                                                            ✏️ Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => cancelOrder(order._id)}
+                                                            disabled={deletingId === order._id}
+                                                            className="flex-1 rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-black text-rose-600 hover:bg-rose-50 transition-all disabled:opacity-50"
+                                                        >
+                                                            {deletingId === order._id ? 'Cancelling…' : '❌ Cancel'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {!isPending && !['completed', 'cancelled'].includes(order.status) && (
                                                     <button
-                                                        onClick={() => openEdit(order)}
-                                                        className="flex-1 rounded-xl border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-50 transition-all"
-                                                    >
-                                                        ✏️ Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => deleteOrder(order._id)}
+                                                        onClick={() => cancelOrder(order._id)}
                                                         disabled={deletingId === order._id}
                                                         className="flex-1 rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-black text-rose-600 hover:bg-rose-50 transition-all disabled:opacity-50"
                                                     >
-                                                        {deletingId === order._id ? 'Deleting…' : '🗑 Delete'}
+                                                        {deletingId === order._id ? 'Cancelling…' : '❌ Cancel'}
                                                     </button>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })}
