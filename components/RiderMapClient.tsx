@@ -1,144 +1,163 @@
-'use client'
+"use client";
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+import 'leaflet/dist/leaflet.css';
 
-type LeafletMarker = {
-    addTo: (map: LeafletMap) => LeafletMarker
-    bindPopup: (content: string) => LeafletMarker
-    remove: () => void
+// Dynamically import Leaflet components
+const MapContainer = dynamic(
+    () => import('react-leaflet').then((mod) => mod.MapContainer),
+    { ssr: false }
+);
+const TileLayer = dynamic(
+    () => import('react-leaflet').then((mod) => mod.TileLayer),
+    { ssr: false }
+);
+const Marker = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Marker),
+    { ssr: false }
+);
+const Popup = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Popup),
+    { ssr: false }
+);
+const MapController = dynamic(
+    () => import('react-leaflet').then((mod) => {
+        const { useMap } = mod;
+        return function MapController({ center, zoom }: { center: [number, number], zoom: number }) {
+            const map = useMap();
+            useEffect(() => {
+                map.setView(center, zoom);
+            }, [center, zoom, map]);
+            return null;
+        };
+    }),
+    { ssr: false }
+);
+
+interface Order {
+    _id: string;
+    customerName: string;
+    pickupAddress: string;
+    totalPrice: number;
+    pickupLocation?: {
+        type: string;
+        coordinates: [number, number];
+    };
+    distance?: number;
 }
 
-type LeafletMap = {
-    setView: (center: [number, number], zoom: number) => void
-    remove: () => void
+interface RiderMapClientProps {
+    orders: Order[];
+    userLocation?: { lat: number; lon: number } | null;
+    onAcceptOrder?: (orderId: string) => void;
 }
 
-type LeafletLib = {
-    map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap
-    tileLayer: (url: string, options: { maxZoom: number; attribution?: string }) => { addTo: (map: LeafletMap) => void }
-    marker: (latLng: [number, number]) => LeafletMarker
-}
+export default function RiderMapClient({ orders, userLocation, onAcceptOrder }: RiderMapClientProps) {
+    const [mapView, setMapView] = useState<{ center: [number, number], zoom: number }>({
+        center: [13.7563, 100.5018], // Default Bangkok
+        zoom: 13
+    });
 
-async function loadLeaflet() {
-    if (typeof window === 'undefined') return null
-    const w = window as unknown as { L?: LeafletLib }
-    if (w.L) return w.L
+    // Fix for Leaflet default icons
+    const icon = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        const L = require('leaflet');
+        return L.icon({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+    }, []);
 
-    if (!document.querySelector('link[data-leaflet="true"]')) {
-        const css = document.createElement('link')
-        css.rel = 'stylesheet'
-        css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-        css.setAttribute('data-leaflet', 'true')
-        document.head.appendChild(css)
-    }
-
-    await new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null
-        if (existing) {
-            if ((window as any).L) {
-                resolve()
-                return
-            }
-            existing.addEventListener('load', () => resolve())
-            existing.addEventListener('error', () => reject(new Error('Failed to load leaflet')))
-            return
-        }
-
-        const script = document.createElement('script')
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-        script.async = true
-        script.setAttribute('data-leaflet', 'true')
-        script.onload = () => resolve()
-        script.onerror = () => reject(new Error('Failed to load leaflet'))
-        document.body.appendChild(script)
-    })
-
-    return (window as unknown as { L?: LeafletLib }).L ?? null
-}
-
-export default function RiderMapClient() {
-    const [orders, setOrders] = useState<any[]>([])
-    const mapContainerRef = useRef<HTMLDivElement | null>(null)
-    const mapRef = useRef<LeafletMap | null>(null)
-    const leafletRef = useRef<LeafletLib | null>(null)
-    const markersRef = useRef<LeafletMarker[]>([])
+    // Custom rider icon
+    const riderIcon = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        const L = require('leaflet');
+        return L.divIcon({
+            className: 'custom-rider-icon',
+            html: `
+                <div class="relative flex items-center justify-center">
+                    <div class="absolute h-6 w-6 rounded-full bg-blue-500/20 animate-ping"></div>
+                    <div class="h-4 w-4 rounded-full bg-blue-600 border-2 border-white shadow-lg ring-2 ring-blue-600/20"></div>
+                </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+        });
+    }, []);
 
     useEffect(() => {
-        fetch('http://localhost:3000/orders/rider/map', {
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem('accessToken')}`
-            }
-        })
-            .then(res => res.json())
-            .then(data => {
-                // 🔥 แก้ปัญหา orders.map is not a function
-                if (Array.isArray(data)) {
-                    setOrders(data)
-                } else if (data.data) {
-                    setOrders(data.data)
-                }
-            })
-    }, [])
-
-    useEffect(() => {
-        let mounted = true
-
-        const setupMap = async () => {
-            const L = await loadLeaflet()
-            if (!mounted || !L || !mapContainerRef.current || mapRef.current) return
-
-            leafletRef.current = L
-            const map = L.map(mapContainerRef.current, {
-                center: [18.7883, 98.9853],
-                zoom: 13,
-            })
-
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors',
-            }).addTo(map)
-
-            mapRef.current = map
+        if (userLocation) {
+            setMapView({ center: [userLocation.lat, userLocation.lon], zoom: 13 });
         }
-
-        setupMap()
-
-        return () => {
-            mounted = false
-            markersRef.current.forEach((marker) => marker.remove())
-            markersRef.current = []
-            if (mapRef.current) mapRef.current.remove()
-            mapRef.current = null
-        }
-    }, [])
-
-    useEffect(() => {
-        const map = mapRef.current
-        const L = leafletRef.current
-        if (!map || !L) return
-
-        markersRef.current.forEach((marker) => marker.remove())
-        markersRef.current = []
-
-        orders.forEach((order, index) => {
-            const lat = order?.location?.lat ?? (18.7883 + (((index % 5) - 2) * 0.01))
-            const lng = order?.location?.lng ?? order?.location?.lon ?? (98.9853 + ((Math.floor(index / 5) - 1) * 0.01))
-
-            const marker = L.marker([lat, lng])
-                .bindPopup(
-                    `<div><b>Customer:</b> ${order?.user?.email || '-'}<br/><b>Status:</b> ${order?.status || '-'}${order?.weight ? `<br/><b>Weight:</b> ${order.weight} kg` : ''}</div>`,
-                )
-                .addTo(map)
-
-            markersRef.current.push(marker)
-
-            if (index === 0) {
-                map.setView([lat, lng], 13)
-            }
-        })
-    }, [orders])
+    }, [userLocation]);
 
     return (
-        <div ref={mapContainerRef} className="h-screen w-full" />
-    )
+        <div className="h-full w-full relative">
+            <MapContainer
+                center={mapView.center}
+                zoom={mapView.zoom}
+                scrollWheelZoom={true}
+                style={{ height: '100%', width: '100%' }}
+                zoomControl={false}
+            >
+                <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <MapController center={mapView.center} zoom={mapView.zoom} />
+
+                {userLocation && riderIcon && (
+                    <Marker position={[userLocation.lat, userLocation.lon]} icon={riderIcon}>
+                        <Popup>
+                            <div className="p-2">
+                                <p className="font-black text-blue-600 text-xs uppercase tracking-widest">Your Location</p>
+                            </div>
+                        </Popup>
+                    </Marker>
+                )}
+
+                {orders.map((order) => {
+                    const lat = order.pickupLocation?.coordinates?.[1];
+                    const lon = order.pickupLocation?.coordinates?.[0];
+
+                    if (!lat || !lon || !icon) return null;
+
+                    return (
+                        <Marker
+                            key={order._id}
+                            position={[lat, lon]}
+                            icon={icon}
+                        >
+                            <Popup>
+                                <div className="p-3 w-48 font-sans">
+                                    <p className="font-black text-blue-900 text-sm mb-1">{order.customerName}</p>
+                                    <p className="text-[10px] text-slate-500 font-bold mb-2 line-clamp-2">{order.pickupAddress}</p>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded">฿{order.totalPrice}</span>
+                                        {order.distance !== undefined && (
+                                            <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">{order.distance} km</span>
+                                        )}
+                                    </div>
+                                    {onAcceptOrder && (
+                                        <button
+                                            onClick={() => onAcceptOrder(order._id)}
+                                            className="w-full bg-blue-600 text-white text-[10px] font-black py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100 uppercase tracking-widest"
+                                        >
+                                            Accept Order
+                                        </button>
+                                    )}
+                                </div>
+                            </Popup>
+                        </Marker>
+                    );
+                })}
+            </MapContainer>
+        </div>
+    );
 }

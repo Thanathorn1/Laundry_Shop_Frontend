@@ -1,66 +1,40 @@
 "use client";
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { apiFetch } from '@/lib/api';
+import 'leaflet/dist/leaflet.css';
 
-type LatLng = { lat: number; lng: number };
-
-type LeafletMarker = {
-    addTo: (map: LeafletMap) => LeafletMarker;
-    bindPopup: (content: string) => LeafletMarker;
-    remove: () => void;
-};
-
-type LeafletMap = {
-    setView: (center: [number, number], zoom: number) => void;
-    invalidateSize: () => void;
-    remove: () => void;
-};
-
-type LeafletLib = {
-    map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
-    tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
-    marker: (latLng: [number, number]) => LeafletMarker;
-};
-
-const DEFAULT_CENTER: LatLng = { lat: 13.7563, lng: 100.5018 };
-
-async function loadLeaflet() {
-    if (typeof window === 'undefined') return null;
-    const w = window as unknown as { L?: LeafletLib };
-    if (w.L) return w.L;
-
-    if (!document.querySelector('link[data-leaflet="true"]')) {
-        const css = document.createElement('link');
-        css.rel = 'stylesheet';
-        css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        css.setAttribute('data-leaflet', 'true');
-        document.head.appendChild(css);
-    }
-
-    await new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
-        if (existing) {
-            if ((window as any).L) {
-                resolve();
-                return;
-            }
-            existing.addEventListener('load', () => resolve());
-            existing.addEventListener('error', () => reject(new Error('Failed to load leaflet')));
-            return;
-        }
-
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.async = true;
-        script.setAttribute('data-leaflet', 'true');
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('Failed to load leaflet'));
-        document.body.appendChild(script);
-    });
-
-    return (window as unknown as { L?: LeafletLib }).L ?? null;
-}
+// Dynamically import Leaflet components to avoid SSR issues
+const MapContainer = dynamic(
+    () => import('react-leaflet').then((mod) => mod.MapContainer),
+    { ssr: false }
+);
+const TileLayer = dynamic(
+    () => import('react-leaflet').then((mod) => mod.TileLayer),
+    { ssr: false }
+);
+const Marker = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Marker),
+    { ssr: false }
+);
+const Popup = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Popup),
+    { ssr: false }
+);
+const MapController = dynamic(
+    () => import('react-leaflet').then((mod) => {
+        const { useMap } = mod;
+        return function MapController({ center, zoom }: { center: [number, number], zoom: number }) {
+            const map = useMap();
+            useEffect(() => {
+                map.setView(center, zoom);
+            }, [center, zoom, map]);
+            return null;
+        };
+    }),
+    { ssr: false }
+);
 
 interface Order {
     _id: string;
@@ -69,62 +43,93 @@ interface Order {
     deliveryAddress: string;
     status: string;
     totalPrice: number;
-}
-
-interface Shop {
-    _id: string;
-    shopName?: string;
-    label?: string;
-    phoneNumber?: string;
-    photoImage?: string;
-    distanceKm?: number | null;
     location?: {
-        type: string;
-        coordinates: number[];
+        lat: number;
+        lon: number;
     };
+    distance?: number;
 }
 
 export default function RiderDashboard() {
     const [orders, setOrders] = useState<Order[]>([]);
+    const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-    const [shops, setShops] = useState<Shop[]>([]);
-    const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
-    const mapContainerRef = useRef<HTMLDivElement | null>(null);
-    const mapRef = useRef<LeafletMap | null>(null);
-    const leafletRef = useRef<LeafletLib | null>(null);
-    const orderMarkersRef = useRef<LeafletMarker[]>([]);
-    const shopMarkersRef = useRef<LeafletMarker[]>([]);
-    const selectedMarkerRef = useRef<LeafletMarker | null>(null);
+    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+    const [maxDistance, setMaxDistance] = useState<number>(0);
+    const [mapView, setMapView] = useState<{ center: [number, number], zoom: number }>({
+        center: [13.7563, 100.5018], // Default Bangkok
+        zoom: 13
+    });
+
+    // Fix for Leaflet default icons in Next.js
+    const icon = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        const L = require('leaflet');
+        return L.icon({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+    }, []);
+
+    // Custom CSS-based rider icon (Blue dot with white border)
+    const riderIcon = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        const L = require('leaflet');
+        return L.divIcon({
+            className: 'custom-rider-icon',
+            html: `
+                <div class="relative flex items-center justify-center">
+                    <div class="absolute h-6 w-6 rounded-full bg-blue-500/20 animate-ping"></div>
+                    <div class="h-4 w-4 rounded-full bg-blue-600 border-2 border-white shadow-lg ring-2 ring-blue-600/20"></div>
+                </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+        });
+    }, []);
 
     useEffect(() => {
         fetchOrders();
-        getCurrentLocation();
-    }, []);
 
-    const getCurrentLocation = () => {
+        let watchId: number;
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
+            watchId = navigator.geolocation.watchPosition(
                 (position) => {
-                    setUserLocation({
+                    const coords = {
                         lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    });
-                    fetchNearbyShops(position.coords.latitude, position.coords.longitude);
+                        lon: position.coords.longitude
+                    };
+                    setUserLocation(coords);
+                    // Only auto-center on first load to avoid disrupting user interaction
+                    if (!userLocation) {
+                        setMapView({ center: [coords.lat, coords.lon], zoom: 13 });
+                    }
                 },
-                (err) => console.error("Geolocation error:", err)
+                (err) => console.error("Geolocation error:", err),
+                { enableHighAccuracy: true }
             );
         }
-    };
 
-    const fetchNearbyShops = async (lat: number, lon: number) => {
-        try {
-            const data = await apiFetch(`/map/shops/nearby?lat=${lat}&lng=${lon}&maxDistanceKm=8`);
-            setShops(Array.isArray(data) ? data : []);
-        } catch {
-            setShops([]);
-        }
+        return () => {
+            if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
+        };
+    }, []);
+
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
     };
 
     const fetchOrders = async () => {
@@ -132,121 +137,62 @@ export default function RiderDashboard() {
             setLoading(true);
             const data = await apiFetch('/rider/available');
             setOrders(data);
-        } catch (err: unknown) {
-            if (err instanceof Error) {
-                setError(err.message);
-            } else {
-                setError('An unknown error occurred');
-            }
+        } catch (err: any) {
+            setError(err.message || 'An unknown error occurred');
         } finally {
             setLoading(false);
         }
     };
 
+    useEffect(() => {
+        if (!orders.length) {
+            setFilteredOrders([]);
+            return;
+        }
+
+        const updated = orders
+            .map((order: any) => {
+                const lat = order.pickupLocation?.coordinates?.[1];
+                const lon = order.pickupLocation?.coordinates?.[0];
+
+                if (!lat || !lon) return null;
+
+                let distance = 0;
+
+                if (userLocation) {
+                    distance = calculateDistance(
+                        userLocation.lat,
+                        userLocation.lon,
+                        lat,
+                        lon
+                    );
+                }
+
+                return {
+                    ...order,
+                    location: { lat, lon },
+                    distance: parseFloat(distance.toFixed(1))
+                };
+            })
+            .filter(Boolean);
+
+        const filtered = updated.filter(
+            (order: any) =>
+                maxDistance === 0 ||
+                (order.distance !== undefined && order.distance <= maxDistance)
+        );
+
+        setFilteredOrders(filtered);
+    }, [orders, userLocation, maxDistance]);
+
     const acceptOrder = async (orderId: string) => {
         try {
             await apiFetch(`/rider/accept/${orderId}`, { method: 'PATCH' });
+            alert('Order accepted successfully!');
             fetchOrders();
-        } catch (err: unknown) {
-            if (err instanceof Error) {
-                alert(err.message);
-            }
+        } catch (err: any) {
+            alert(err.message);
         }
-    };
-
-    useEffect(() => {
-        if (loading) return;
-        let mounted = true;
-
-        const setupMap = async () => {
-            const L = await loadLeaflet();
-            if (!mounted || !L || !mapContainerRef.current || mapRef.current) return;
-
-            leafletRef.current = L;
-            const map = L.map(mapContainerRef.current, {
-                center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
-                zoom: 13,
-            });
-
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-            }).addTo(map);
-
-            mapRef.current = map;
-            setTimeout(() => {
-                map.invalidateSize();
-            }, 50);
-        };
-
-        setupMap();
-
-        return () => {
-            mounted = false;
-            orderMarkersRef.current.forEach((marker) => marker.remove());
-            shopMarkersRef.current.forEach((marker) => marker.remove());
-            selectedMarkerRef.current?.remove();
-            orderMarkersRef.current = [];
-            shopMarkersRef.current = [];
-            selectedMarkerRef.current = null;
-            if (mapRef.current) mapRef.current.remove();
-            mapRef.current = null;
-        };
-    }, [loading]);
-
-    useEffect(() => {
-        const map = mapRef.current;
-        const L = leafletRef.current;
-        if (!map || !L) return;
-
-        setTimeout(() => {
-            map.invalidateSize();
-        }, 0);
-
-        orderMarkersRef.current.forEach((marker) => marker.remove());
-        shopMarkersRef.current.forEach((marker) => marker.remove());
-        orderMarkersRef.current = [];
-        shopMarkersRef.current = [];
-
-        orders.forEach((order: Order, index) => {
-            const mockLat = DEFAULT_CENTER.lat + (((index % 5) - 2) * 0.01);
-            const mockLng = DEFAULT_CENTER.lng + ((Math.floor(index / 5) - 1) * 0.01);
-            const marker = L.marker([mockLat, mockLng])
-                .bindPopup(`<b>${order.customerName}</b><br/>${order.pickupAddress || '-'}`)
-                .addTo(map);
-            orderMarkersRef.current.push(marker);
-        });
-
-        if (userLocation) {
-            const marker = L.marker([userLocation.lat, userLocation.lng])
-                .bindPopup('<b>Your Location</b>')
-                .addTo(map);
-            orderMarkersRef.current.push(marker);
-            map.setView([userLocation.lat, userLocation.lng], 14);
-        }
-
-        shops.forEach((shop) => {
-            const coords = shop.location?.coordinates;
-            if (!Array.isArray(coords) || coords.length < 2) return;
-
-            const marker = L.marker([coords[1], coords[0]])
-                .bindPopup(`<b>${shop.shopName || shop.label || 'Laundry Shop'}</b><br/>${shop.phoneNumber || '-'}`)
-                .addTo(map);
-            shopMarkersRef.current.push(marker);
-        });
-    }, [orders, shops, userLocation]);
-
-    const chooseShop = (shop: Shop) => {
-        setSelectedShopId(shop._id);
-        const coords = shop.location?.coordinates;
-        const map = mapRef.current;
-        const L = leafletRef.current;
-        if (!map || !L || !Array.isArray(coords) || coords.length < 2) return;
-
-        selectedMarkerRef.current?.remove();
-        selectedMarkerRef.current = L.marker([coords[1], coords[0]])
-            .bindPopup(`<b>${shop.shopName || shop.label || 'Selected Shop'}</b><br/>${shop.phoneNumber || '-'}`)
-            .addTo(map);
-        map.setView([coords[1], coords[0]], 15);
     };
 
     if (loading) return (
@@ -287,20 +233,194 @@ export default function RiderDashboard() {
     );
 
     return (
-        <div className="h-screen w-full relative bg-slate-100">
-            <div ref={mapContainerRef} className="h-full w-full" />
+        <div className="relative h-screen w-full overflow-hidden bg-slate-50">
+            {/* MapContainer - Client Only */}
+            <div className="absolute inset-0 z-0 h-full w-full">
+                {typeof window !== 'undefined' && (
+                    <MapContainer
+                        center={mapView.center}
+                        zoom={mapView.zoom}
+                        scrollWheelZoom={true}
+                        style={{ height: '100%', width: '100%' }}
+                        zoomControl={false}
+                    >
+                        <TileLayer
+                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        />
+                        <MapController center={mapView.center} zoom={mapView.zoom} />
 
-            <div className="absolute left-6 top-6 z-[500] rounded-2xl bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
-                <h1 className="text-2xl font-black text-blue-900 tracking-tight">Available Orders</h1>
-                <p className="text-blue-700/60 text-xs font-semibold">{orders.length} orders • {shops.length} shops nearby</p>
+                        {userLocation && riderIcon && (
+                            <Marker position={[userLocation.lat, userLocation.lon]} icon={riderIcon}>
+                                <Popup>
+                                    <div className="p-2">
+                                        <p className="font-black text-blue-600 text-xs uppercase tracking-widest">Your Location</p>
+                                    </div>
+                                </Popup>
+                            </Marker>
+                        )}
+
+                        {filteredOrders.map((order) => (
+                            order.location && icon && (
+                                <Marker
+                                    key={order._id}
+                                    position={[order.location.lat, order.location.lon]}
+                                    icon={icon}
+                                >
+                                    <Popup>
+                                        <div className="p-3 w-48">
+                                            <p className="font-black text-blue-900 text-sm mb-1">{order.customerName}</p>
+                                            <p className="text-[10px] text-slate-500 font-bold mb-2 line-clamp-2">{order.pickupAddress}</p>
+                                            <div className="flex justify-between items-center mb-3">
+                                                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded">฿{order.totalPrice}</span>
+                                                <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">{order.distance} km</span>
+                                            </div>
+                                            <button
+                                                onClick={() => acceptOrder(order._id)}
+                                                className="w-full bg-blue-600 text-white text-[10px] font-black py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100 uppercase tracking-widest"
+                                            >
+                                                Accept Order
+                                            </button>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            )
+                        ))}
+                    </MapContainer>
+                )}
             </div>
 
-            {userLocation && (
-                <div className="absolute right-6 top-6 z-[500] flex items-center gap-2 rounded-full border border-blue-100 bg-white/95 px-4 py-2 shadow backdrop-blur">
-                    <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse"></div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-700">GPS Active</span>
+            {/* Top Bar - Floating Layer */}
+            <div className="absolute top-6 left-6 right-6 z-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pointer-events-none text-blue-900">
+                <div className="pointer-events-auto">
+                    <div className="bg-white/90 backdrop-blur-xl p-4 rounded-[2rem] shadow-2xl shadow-blue-900/10 border border-white/50 flex items-center gap-4">
+                        <div className="h-10 w-10 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+                            <span className="text-white text-xl">📦</span>
+                        </div>
+                        <div>
+                            <h1 className="text-lg font-black text-blue-900 leading-none">Available Jobs</h1>
+                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-1">Real-time Updates</p>
+                        </div>
+                    </div>
                 </div>
-            )}
+
+                <div className="flex items-center gap-3 pointer-events-auto">
+                    <div className="bg-white/90 backdrop-blur-xl px-2 py-2 rounded-2xl shadow-2xl shadow-blue-900/10 border border-white/50 flex items-center gap-2">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-2">Range</span>
+                        <select
+                            value={maxDistance}
+                            onChange={(e) => setMaxDistance(Number(e.target.value))}
+                            className="bg-blue-50 text-blue-900 text-[10px] font-black px-3 py-1.5 rounded-xl border border-blue-100 focus:outline-none cursor-pointer hover:bg-blue-100 transition-colors"
+                        >
+                            <option value={5}>5 KM</option>
+                            <option value={10}>10 KM</option>
+                            <option value={20}>20 KM</option>
+                            <option value={50}>50 KM</option>
+                            <option value={0}>∞ ALL</option>
+                        </select>
+                    </div>
+
+                    {userLocation && (
+                        <div className="bg-blue-600 px-4 py-2.5 rounded-2xl shadow-xl shadow-blue-200 flex items-center gap-2">
+                            <div className="h-1.5 w-1.5 bg-white rounded-full animate-pulse"></div>
+                            <span className="text-[9px] text-white font-black uppercase tracking-widest">GPS Active</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Side Panel - Floating Order List */}
+            <div className="absolute top-32 bottom-6 left-6 w-84 z-20 pointer-events-none flex flex-col gap-4 text-blue-900">
+                <div className="pointer-events-auto flex-1 flex flex-col min-h-0">
+                    <div className="bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-blue-900/10 border border-white/50 overflow-hidden flex flex-col h-full ring-1 ring-black/[0.02]">
+                        <div className="p-6 pb-4 border-b border-slate-50 flex items-center justify-between">
+                            <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">Nearby Orders</span>
+                            <span className="bg-blue-50 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-blue-100">
+                                {filteredOrders.length} Found
+                            </span>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                            {filteredOrders.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
+                                    <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center text-2xl border border-slate-100">🔭</div>
+                                    <div>
+                                        <p className="text-sm font-black text-blue-900">No Jobs Nearby</p>
+                                        <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Try increasing the range</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                filteredOrders.map((order: Order) => (
+                                    <div
+                                        key={order._id}
+                                        className="bg-white rounded-3xl p-5 border border-slate-50 shadow-sm hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 group cursor-pointer active:scale-[0.98]"
+                                        onClick={() => {
+                                            if (order.location) {
+                                                setMapView({ center: [order.location.lat, order.location.lon], zoom: 16 });
+                                            }
+                                        }}
+                                    >
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="flex-1 pr-2">
+                                                <h3 className="text-sm font-black text-blue-900 line-clamp-1">{order.customerName}</h3>
+                                                <div className="flex items-center gap-1.5 mt-1">
+                                                    <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase tracking-tighter">
+                                                        {order.distance} km
+                                                    </span>
+                                                    <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 uppercase tracking-tighter">
+                                                        ฿{order.totalPrice}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    acceptOrder(order._id);
+                                                }}
+                                                className="bg-blue-600 text-[10px] font-black text-white px-3 py-2 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100"
+                                            >
+                                                Take
+                                            </button>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-start gap-2">
+                                                <div className="h-1.5 w-1.5 rounded-full bg-blue-400 mt-1 flex-shrink-0"></div>
+                                                <p className="text-[10px] font-bold text-slate-500 line-clamp-1">{order.pickupAddress}</p>
+                                            </div>
+                                            <div className="flex items-start gap-2">
+                                                <div className="h-1.5 w-1.5 rounded-full bg-sky-300 mt-1 flex-shrink-0"></div>
+                                                <p className="text-[10px] font-bold text-slate-400 line-clamp-1">{order.deliveryAddress}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <style jsx global>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #e2e8f0;
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #cbd5e1;
+                }
+                .leaflet-container {
+                    background: #f8fafc;
+                }
+                .leaflet-bottom.leaflet-right {
+                    display: none;
+                }
+            `}</style>
         </div>
     );
 }
