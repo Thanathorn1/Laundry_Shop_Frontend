@@ -24,13 +24,43 @@ export default function RiderProfile() {
         fetchProfile();
     }, []);
 
+    const emptyProfile: RiderProfile = {
+        fullName: '',
+        licensePlate: '',
+        drivingLicense: '',
+        phone: '',
+        address: '',
+        isApproved: false,
+        riderImageUrl: '',
+        vehicleImageUrl: '',
+    };
+
+    const isMissingProfileError = (message: string) => {
+        const m = (message || '').toLowerCase();
+        return (
+            m.includes('not found') ||
+            m.includes('โปรไฟล์') ||
+            m.includes('ยังไม่ได้') ||
+            m.includes('ไม่มี')
+        );
+    };
+
     const fetchProfile = async () => {
         try {
             setLoading(true);
             const data = await apiFetch('/rider/profile');
             setProfile(data);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+
+            // New rider might not have a profile yet: allow creating one
+            if (isMissingProfileError(message)) {
+                setError(null);
+                setProfile(emptyProfile);
+                return;
+            }
+
+            setError(message);
         } finally {
             setLoading(false);
         }

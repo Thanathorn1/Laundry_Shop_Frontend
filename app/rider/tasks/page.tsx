@@ -43,7 +43,7 @@ interface Task {
     contactPhone: string;
     pickupAddress: string;
     deliveryAddress: string;
-    status: 'assigned' | 'picked_up' | 'completed' | 'cancelled';
+    status: 'pending' | 'assigned' | 'picked_up' | 'at_shop' | 'washing' | 'laundry_done' | 'out_for_delivery' | 'completed' | 'cancelled';
     totalPrice: number;
     pickupLocation?: {
         type: string;
@@ -58,16 +58,28 @@ interface Task {
     createdAt: string;
 }
 
+type Shop = {
+    _id: string;
+    shopName?: string;
+    label?: string;
+};
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
     pending: { label: 'Pending', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', icon: '⏳' },
     assigned: { label: 'Assigned', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: '🚴' },
     picked_up: { label: 'Picked Up', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200', icon: '📦' },
+    at_shop: { label: 'At Shop', color: 'text-sky-700', bg: 'bg-sky-50 border-sky-200', icon: '🏪' },
+    washing: { label: 'Washing', color: 'text-violet-700', bg: 'bg-violet-50 border-violet-200', icon: '🫧' },
+    laundry_done: { label: 'Laundry Done', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: '🧺' },
+    out_for_delivery: { label: 'Out For Delivery', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: '🚚' },
     completed: { label: 'Completed', color: 'text-green-700', bg: 'bg-green-50 border-green-200', icon: '✅' },
     cancelled: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-50 border-red-200', icon: '❌' },
 };
 
 export default function MyTasks() {
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [shops, setShops] = useState<Shop[]>([]);
+    const [handoverShopByOrderId, setHandoverShopByOrderId] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -75,6 +87,7 @@ export default function MyTasks() {
 
     useEffect(() => {
         fetchTasks();
+        fetchShops();
     }, []);
 
     const fetchTasks = async () => {
@@ -86,6 +99,60 @@ export default function MyTasks() {
             setError(err instanceof Error ? err.message : "An unknown error occurred");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchShops = async () => {
+        try {
+            const data = (await apiFetch('/map/shops')) as Shop[];
+            setShops(Array.isArray(data) ? data : []);
+        } catch {
+            setShops([]);
+        }
+    };
+
+    const handoverToShop = async (orderId: string) => {
+        const shopId = handoverShopByOrderId[orderId] || shops[0]?._id;
+        if (!shopId) {
+            alert('Please select a shop first');
+            return;
+        }
+
+        setUpdatingId(orderId);
+        try {
+            await apiFetch(`/rider/handover/${orderId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ shopId }),
+            });
+            await fetchTasks();
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : 'Failed to handover to shop');
+        } finally {
+            setUpdatingId(null);
+        }
+    };
+
+    const startReturnDelivery = async (orderId: string) => {
+        setUpdatingId(orderId);
+        try {
+            await apiFetch(`/rider/return-delivery/${orderId}`, { method: 'PATCH' });
+            await fetchTasks();
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : 'Failed to start return delivery');
+        } finally {
+            setUpdatingId(null);
+        }
+    };
+
+    const completeDelivery = async (orderId: string) => {
+        setUpdatingId(orderId);
+        try {
+            await apiFetch(`/rider/complete-delivery/${orderId}`, { method: 'PATCH' });
+            await fetchTasks();
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : 'Failed to complete delivery');
+        } finally {
+            setUpdatingId(null);
         }
     };
 
@@ -130,7 +197,7 @@ export default function MyTasks() {
         });
     }, []);
 
-    const activeTasks = tasks.filter(t => !['completed', 'cancelled', 'pending'].includes(t.status));
+    const activeTasks = tasks.filter(t => !['completed', 'cancelled'].includes(t.status));
 
     const mapPos = useMemo(() => {
         if (activeTasks.length > 0) {
@@ -220,14 +287,56 @@ export default function MyTasks() {
                                                 </button>
                                             )}
                                             {task.status === 'picked_up' && (
+                                                <div className="flex flex-1 gap-2">
+                                                    <select
+                                                        value={handoverShopByOrderId[task._id] || ''}
+                                                        onChange={(e) =>
+                                                            setHandoverShopByOrderId((prev) => ({
+                                                                ...prev,
+                                                                [task._id]: e.target.value,
+                                                            }))
+                                                        }
+                                                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-3 text-[10px] font-black text-blue-900 uppercase tracking-widest"
+                                                    >
+                                                        <option value="" disabled>
+                                                            Select Shop
+                                                        </option>
+                                                        {shops.map((s) => (
+                                                            <option key={s._id} value={s._id}>
+                                                                {(s.shopName || s.label || 'Shop').toUpperCase()}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <button
+                                                        onClick={() => handoverToShop(task._id)}
+                                                        disabled={updatingId === task._id}
+                                                        className="bg-sky-600 text-white text-[10px] font-black px-4 py-3 rounded-xl hover:bg-sky-700 transition-colors shadow-lg shadow-sky-100 uppercase tracking-widest disabled:opacity-50"
+                                                    >
+                                                        {updatingId === task._id ? '...' : 'Send'}
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {task.status === 'laundry_done' && (
                                                 <button
-                                                    onClick={() => updateStatus(task._id, 'completed')}
+                                                    onClick={() => startReturnDelivery(task._id)}
+                                                    disabled={updatingId === task._id}
+                                                    className="flex-1 bg-blue-600 text-white text-[10px] font-black px-4 py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100 uppercase tracking-widest disabled:opacity-50"
+                                                >
+                                                    {updatingId === task._id ? '...' : 'Return Delivery'}
+                                                </button>
+                                            )}
+
+                                            {task.status === 'out_for_delivery' && (
+                                                <button
+                                                    onClick={() => completeDelivery(task._id)}
                                                     disabled={updatingId === task._id}
                                                     className="flex-1 bg-emerald-600 text-white text-[10px] font-black px-4 py-3 rounded-xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100 uppercase tracking-widest disabled:opacity-50"
                                                 >
                                                     {updatingId === task._id ? '...' : 'Complete'}
                                                 </button>
                                             )}
+
                                             {(task.status === 'assigned' || task.status === 'picked_up') && (
                                                 <div className="flex flex-col gap-1 flex-1">
                                                     <button

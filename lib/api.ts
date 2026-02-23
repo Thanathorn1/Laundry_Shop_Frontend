@@ -1,4 +1,14 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+
+export const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '').endsWith('/api')
+  ? RAW_API_BASE_URL.replace(/\/+$/, '')
+  : `${RAW_API_BASE_URL.replace(/\/+$/, '')}/api`;
+
+function joinUrl(baseUrl: string, path: string) {
+  const base = baseUrl.replace(/\/+$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${suffix}`;
+}
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
@@ -13,7 +23,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(joinUrl(API_BASE_URL, endpoint), {
     ...options,
     headers,
   });
@@ -29,7 +39,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 export async function apiUpload(endpoint: string, formData: FormData) {
   const token = localStorage.getItem('access_token');
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(joinUrl(API_BASE_URL, endpoint), {
     method: 'PATCH',
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
