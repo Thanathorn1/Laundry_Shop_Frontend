@@ -395,6 +395,7 @@ export default function CreateOrderPage() {
       setDescription("");
       setBasketPhotos([]);
       setSavePickup(false);
+      router.push('/customer');
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "Create order failed";
       if (message.toLowerCase().includes('unauthorized')) {

@@ -146,6 +146,7 @@ export default function RiderDashboard() {
     const resolveAssetUrl = (value: string | undefined | null) => {
         if (!value) return '';
         if (value.startsWith('http')) return value;
+        if (value.startsWith('data:') || value.startsWith('blob:')) return value;
         return `${ASSET_BASE_URL}${value.startsWith('/') ? value : `/${value}`}`;
     };
 
