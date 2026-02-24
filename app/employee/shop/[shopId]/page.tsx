@@ -68,12 +68,12 @@ export default function EmployeeShopPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     if (!shopId) {
       setOrders([]);
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
     try {
@@ -81,9 +81,9 @@ export default function EmployeeShopPage() {
       setOrders(Array.isArray(data) ? data : []);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load shop orders';
-      setError(msg);
+      if (!silent) setError(msg);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -108,7 +108,7 @@ export default function EmployeeShopPage() {
     socket.on('order:update', (order: any) => {
       const incomingShopId = order?.shopId ? String(order.shopId) : '';
       if (incomingShopId && incomingShopId === shopId) {
-        fetchOrders();
+        fetchOrders(true);
       }
     });
 
@@ -116,6 +116,15 @@ export default function EmployeeShopPage() {
       socket.off('order:update');
       socket.disconnect();
     };
+  }, [shopId]);
+
+  // Polling fallback: refresh orders every 5 seconds for real-time updates
+  useEffect(() => {
+    if (!shopId) return;
+    const interval = setInterval(() => {
+      fetchOrders(true);
+    }, 5000);
+    return () => clearInterval(interval);
   }, [shopId]);
 
   useEffect(() => {

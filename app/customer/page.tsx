@@ -254,6 +254,19 @@ export default function CustomerPage() {
         };
     }, []);
 
+    // Polling fallback: refresh orders every 5 seconds for real-time status updates
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                const ordersData = await apiFetch('/customers/orders');
+                setOrders(Array.isArray(ordersData) ? ordersData : []);
+            } catch {
+                // ignore transient errors
+            }
+        }, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
     useEffect(() => {
         const urls = editBasketPhotos.map((file) => URL.createObjectURL(file));
         setEditBasketPreviews(urls);

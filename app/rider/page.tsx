@@ -115,9 +115,28 @@ export default function RiderDashboard() {
         sendBack: false,
     });
 
+    // Accordion helper: opening one section closes the other three
+    const toggleSection = (key: keyof typeof openSections) => {
+        setOpenSections((prev) => {
+            const opening = !prev[key];
+            // If opening, close everything else
+            if (opening) {
+                const next = { orders: false, shops: false, pickupAtShop: false, sendBack: false };
+                next[key] = true;
+                return next;
+            }
+            // If closing, just close this one
+            return { ...prev, [key]: false };
+        });
+    };
+
     const [shopsAlert, setShopsAlert] = useState(false);
     const [pickupAtShopAlert, setPickupAtShopAlert] = useState(false);
     const [sendBackAlert, setSendBackAlert] = useState(false);
+
+    // Shop search & sort state
+    const [shopSearch, setShopSearch] = useState('');
+    const [shopSortMode, setShopSortMode] = useState<'distance' | 'name-asc' | 'name-desc'>('distance');
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
@@ -232,7 +251,7 @@ export default function RiderDashboard() {
         socketRef.current = socket;
 
         socket.on('connect', () => {
-            socket.emit('register', { userId });
+            socket.emit('register', { userId, role: 'rider' });
         });
 
         socket.on('order:update', (order: any) => {
@@ -263,6 +282,15 @@ export default function RiderDashboard() {
             socket.disconnect();
             socketRef.current = null;
         };
+    }, []);
+
+    // Polling fallback: re-fetch every 5 seconds so data stays fresh even if WebSocket drops
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchAvailableOrders();
+            fetchMyTasks();
+        }, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -316,13 +344,31 @@ export default function RiderDashboard() {
             })
             .filter((x) => x.shop && (x.distance !== null || !userLocation));
 
-        const filtered = withDistance.filter((x) => {
+        // Distance range filter
+        let filtered = withDistance.filter((x) => {
             if (!userLocation) return true;
             if (maxDistance === 0) return true;
             return x.distance !== null && x.distance <= maxDistance;
         });
 
+        // Name search filter
+        if (shopSearch.trim()) {
+            const q = shopSearch.trim().toLowerCase();
+            filtered = filtered.filter((x) => {
+                const name = (x.shop.shopName || x.shop.label || '').toLowerCase();
+                return name.includes(q);
+            });
+        }
+
+        // Sort
         filtered.sort((a, b) => {
+            if (shopSortMode === 'name-asc') {
+                return (a.shop.shopName || a.shop.label || '').localeCompare(b.shop.shopName || b.shop.label || '');
+            }
+            if (shopSortMode === 'name-desc') {
+                return (b.shop.shopName || b.shop.label || '').localeCompare(a.shop.shopName || a.shop.label || '');
+            }
+            // distance (default)
             if (a.distance === null && b.distance === null) return 0;
             if (a.distance === null) return 1;
             if (b.distance === null) return -1;
@@ -330,7 +376,7 @@ export default function RiderDashboard() {
         });
 
         return filtered;
-    }, [shops, userLocation, maxDistance]);
+    }, [shops, userLocation, maxDistance, shopSearch, shopSortMode]);
 
     const myTasksByShopId = useMemo(() => {
         const byShop = new Map<
@@ -786,7 +832,7 @@ export default function RiderDashboard() {
                             <div className="px-1 pt-1">
                                 <button
                                     type="button"
-                                    onClick={() => setOpenSections((p) => ({ ...p, orders: !p.orders }))}
+                                    onClick={() => toggleSection('orders')}
                                     className="w-full flex items-center justify-between mb-2"
                                 >
                                     <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">Nearby Orders</span>
@@ -883,12 +929,10 @@ export default function RiderDashboard() {
                             <div className="px-1 pt-1 pb-2">
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setOpenSections((p) => {
-                                            const nextOpen = !p.shops;
-                                            if (nextOpen) setShopsAlert(false);
-                                            return { ...p, shops: nextOpen };
-                                        })
+                                    onClick={() => {
+                                        if (!openSections.shops) setShopsAlert(false);
+                                        toggleSection('shops');
+                                    }
                                     }
                                     className="w-full flex items-center justify-between mb-2"
                                 >
@@ -901,16 +945,33 @@ export default function RiderDashboard() {
                                         )}
                                     </span>
                                     <div className="flex items-center gap-2">
-                                        {userLocation ? (
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">sorted by distance</span>
-                                        ) : (
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">GPS required</span>
-                                        )}
+                                        <span className="bg-rose-50 text-rose-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-rose-100">
+                                            {nearbyShops.length} Shops
+                                        </span>
                                         <span className={`text-slate-400 text-xs transition-transform ${openSections.shops ? 'rotate-180' : ''}`}>▾</span>
                                     </div>
                                 </button>
 
                                 <div className={`overflow-hidden transition-[max-height] duration-300 ${openSections.shops ? 'max-h-[2000px]' : 'max-h-0'}`}>
+                                    {/* Search & Sort Controls */}
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <input
+                                            type="text"
+                                            value={shopSearch}
+                                            onChange={(e) => setShopSearch(e.target.value)}
+                                            placeholder="Search shop name..."
+                                            className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-white/80 px-3 py-1.5 text-[10px] font-bold text-blue-900 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                        />
+                                        <select
+                                            value={shopSortMode}
+                                            onChange={(e) => setShopSortMode(e.target.value as 'distance' | 'name-asc' | 'name-desc')}
+                                            className="rounded-xl border border-slate-200 bg-white/80 px-2 py-1.5 text-[10px] font-black text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
+                                        >
+                                            <option value="distance">Distance</option>
+                                            <option value="name-asc">Name A→Z</option>
+                                            <option value="name-desc">Name Z→A</option>
+                                        </select>
+                                    </div>
                                     <div className="space-y-3 pb-2">
                                         {nearbyShops.length === 0 ? (
                                             <div className="bg-white rounded-3xl p-5 border border-slate-50 shadow-sm">
@@ -1001,13 +1062,10 @@ export default function RiderDashboard() {
                             <div className="px-1 pt-1 pb-2">
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setOpenSections((p) => {
-                                            const nextOpen = !p.pickupAtShop;
-                                            if (nextOpen) setPickupAtShopAlert(false);
-                                            return { ...p, pickupAtShop: nextOpen };
-                                        })
-                                    }
+                                    onClick={() => {
+                                        if (!openSections.pickupAtShop) setPickupAtShopAlert(false);
+                                        toggleSection('pickupAtShop');
+                                    }}
                                     className="w-full flex items-center justify-between mb-2"
                                 >
                                     <span className="flex items-center gap-2 text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">
@@ -1098,13 +1156,10 @@ export default function RiderDashboard() {
                             <div className="px-1 pt-1 pb-2">
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setOpenSections((p) => {
-                                            const nextOpen = !p.sendBack;
-                                            if (nextOpen) setSendBackAlert(false);
-                                            return { ...p, sendBack: nextOpen };
-                                        })
-                                    }
+                                    onClick={() => {
+                                        if (!openSections.sendBack) setSendBackAlert(false);
+                                        toggleSection('sendBack');
+                                    }}
                                     className="w-full flex items-center justify-between mb-2"
                                 >
                                     <span className="flex items-center gap-2 text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">

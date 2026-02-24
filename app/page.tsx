@@ -514,6 +514,7 @@ export default function Home() {
           <button
             type="submit"
             disabled={isLoading}
+            suppressHydrationWarning
             className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white shadow-2xl shadow-blue-200 hover:bg-blue-700 active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-3 group mt-4"
           >
             {isLoading ? (

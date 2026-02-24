@@ -90,6 +90,14 @@ export default function MyTasks() {
         fetchShops();
     }, []);
 
+    // Polling fallback: refresh tasks every 5 seconds for real-time updates
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchTasks();
+        }, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
     const fetchTasks = async () => {
         try {
             setLoading(true);
