@@ -33,6 +33,7 @@ type ShopOrder = {
 type MyEmployeeProfile = {
   _id: string;
   assignedShopId?: string | null;
+  assignedShopIds?: string[];
 };
 
 type JoinRequestEmployee = {
@@ -67,6 +68,14 @@ export default function EmployeeShopPage() {
   const [joinActionId, setJoinActionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const isMemberOfShop = (value: MyEmployeeProfile | null, targetShopId: string) => {
+    if (!value || !targetShopId) return false;
+    if (value.assignedShopId && String(value.assignedShopId) === String(targetShopId)) return true;
+    return Array.isArray(value.assignedShopIds) && value.assignedShopIds.map(String).includes(String(targetShopId));
+  };
+
+  const canManageJoinRequests = isMemberOfShop(me, shopId);
 
   const fetchOrders = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -141,7 +150,7 @@ export default function EmployeeShopPage() {
 
   useEffect(() => {
     const loadJoinRequests = async () => {
-      if (!shopId || me?.assignedShopId !== shopId) {
+      if (!shopId || !canManageJoinRequests) {
         setJoinRequests([]);
         return;
       }
@@ -158,7 +167,7 @@ export default function EmployeeShopPage() {
     };
 
     loadJoinRequests();
-  }, [shopId, me?.assignedShopId]);
+  }, [shopId, canManageJoinRequests]);
 
   const resolveJoinRequest = async (employeeId: string, action: 'approve' | 'reject') => {
     try {
@@ -204,7 +213,7 @@ export default function EmployeeShopPage() {
       {loading && <p className="text-sm text-blue-700/70">Loading orders...</p>}
       {error && <p className="text-sm text-rose-600">Error: {error}</p>}
 
-      {me?.assignedShopId === shopId && (
+      {canManageJoinRequests && (
         <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-black text-blue-900">Join Requests</h2>
           {joinLoading ? (

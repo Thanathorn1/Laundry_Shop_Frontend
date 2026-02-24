@@ -18,6 +18,7 @@ type Shop = {
 type MyEmployeeProfile = {
   _id: string;
   assignedShopId?: string | null;
+  assignedShopIds?: string[];
   joinRequestShopId?: string | null;
   joinRequestStatus?: 'none' | 'pending' | 'rejected';
 };
@@ -104,6 +105,12 @@ export default function EmployeePage() {
   const leafletRef = useRef<LeafletLib | null>(null);
   const markersRef = useRef<LeafletMarker[]>([]);
   const markerByShopIdRef = useRef<Record<string, LeafletMarker>>({});
+
+  const isMemberOfShop = (shopId: string) => {
+    if (!me || !shopId) return false;
+    if (me.assignedShopId && String(me.assignedShopId) === String(shopId)) return true;
+    return Array.isArray(me.assignedShopIds) && me.assignedShopIds.map(String).includes(String(shopId));
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -293,7 +300,7 @@ export default function EmployeePage() {
             <p className="mt-1 text-xs font-semibold text-blue-600">☎ {shop.phoneNumber || '-'}</p>
             <p className="mt-1 text-xs font-semibold text-blue-500">{shop.distanceKm != null ? `${shop.distanceKm} km` : '-'}</p>
 
-            {me?.assignedShopId === shop._id ? (
+            {isMemberOfShop(shop._id) ? (
               <Link
                 href={`/employee/shop/${shop._id}`}
                 onClick={(event) => event.stopPropagation()}
