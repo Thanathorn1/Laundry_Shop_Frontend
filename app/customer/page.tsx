@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_BASE_URL } from '@/lib/api';
+import { io } from 'socket.io-client';
 
 type LatLng = { lat: number; lng: number };
 
@@ -43,6 +44,21 @@ function getRoleFromAccessToken(token: string | null): 'user' | 'rider' | 'admin
             return parsed.role;
         }
         return null;
+    } catch {
+        return null;
+    }
+}
+
+function getUserIdFromAccessToken(token: string | null) {
+    if (!token) return null;
+    try {
+        const payloadBase64 = token.split('.')[1];
+        if (!payloadBase64) return null;
+
+        const normalized = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+        const parsed = JSON.parse(atob(padded)) as { sub?: string };
+        return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub.trim() : null;
     } catch {
         return null;
     }
@@ -152,6 +168,9 @@ export default function CustomerPage() {
     const [panelSaving, setPanelSaving] = useState(false);
     const [panelError, setPanelError] = useState<string | null>(null);
 
+    const socketRef = useRef<ReturnType<typeof io> | null>(null);
+    const refreshTimerRef = useRef<number | null>(null);
+
     useEffect(() => {
         const token = localStorage.getItem('access_token');
         const tokenRole = getRoleFromAccessToken(token);
@@ -194,6 +213,46 @@ export default function CustomerPage() {
         }
         fetchData();
     }, [router]);
+
+    useEffect(() => {
+        const token = localStorage.getItem('access_token');
+        const userId = getUserIdFromAccessToken(token);
+        if (!userId) return;
+
+        const socketBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+        const socket = io(socketBaseUrl, {
+            transports: ['websocket'],
+        });
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            socket.emit('register', { userId });
+        });
+
+        socket.on('order:update', () => {
+            if (refreshTimerRef.current) {
+                window.clearTimeout(refreshTimerRef.current);
+            }
+            refreshTimerRef.current = window.setTimeout(async () => {
+                try {
+                    const ordersData = await apiFetch('/customers/orders');
+                    setOrders(Array.isArray(ordersData) ? ordersData : []);
+                } catch {
+                    // ignore transient fetch errors
+                }
+            }, 250);
+        });
+
+        return () => {
+            if (refreshTimerRef.current) {
+                window.clearTimeout(refreshTimerRef.current);
+                refreshTimerRef.current = null;
+            }
+            socket.off('order:update');
+            socket.disconnect();
+            socketRef.current = null;
+        };
+    }, []);
 
     useEffect(() => {
         const urls = editBasketPhotos.map((file) => URL.createObjectURL(file));

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 
@@ -53,8 +53,52 @@ async function resolveAuthRole(accessToken: string, apiBaseUrl: string): Promise
   }
 }
 
+type LeafletLib = {
+  map: (container: HTMLElement, options: any) => { remove: () => void };
+  tileLayer: (url: string, options: any) => { addTo: (map: any) => void };
+};
+
+async function loadLeaflet(): Promise<LeafletLib | null> {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as { L?: LeafletLib };
+  if (w.L) return w.L;
+
+  if (!document.querySelector('link[data-leaflet="true"]')) {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    css.setAttribute('data-leaflet', 'true');
+    document.head.appendChild(css);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
+    if (existing) {
+      if ((window as any).L) {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Failed to load leaflet')));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.setAttribute('data-leaflet', 'true');
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load leaflet'));
+    document.body.appendChild(script);
+  });
+
+  return (window as unknown as { L?: LeafletLib }).L ?? null;
+}
+
 export default function Home() {
   const router = useRouter();
+  const mapBgRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<any>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -72,6 +116,49 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const apiBaseUrl = useMemo(() => API_BASE_URL, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const setup = async () => {
+      const L = await loadLeaflet();
+      if (!mounted || !L || !mapBgRef.current || mapInstanceRef.current) return;
+
+      try {
+        const map = L.map(mapBgRef.current, {
+          center: [13.7563, 100.5018],
+          zoom: 12,
+          zoomControl: false,
+          attributionControl: false,
+          dragging: false,
+          scrollWheelZoom: false,
+          doubleClickZoom: false,
+          boxZoom: false,
+          keyboard: false,
+          tap: false,
+          touchZoom: false,
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+        }).addTo(map as any);
+        mapInstanceRef.current = map;
+      } catch {
+        // ignore background map errors
+      }
+    };
+
+    setup();
+
+    return () => {
+      mounted = false;
+      try {
+        mapInstanceRef.current?.remove?.();
+      } catch {
+        // ignore
+      }
+      mapInstanceRef.current = null;
+    };
+  }, []);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -200,8 +287,12 @@ export default function Home() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 font-sans text-blue-900">
-      <main className="w-full max-w-md rounded-[2.5rem] bg-white p-10 shadow-2xl shadow-blue-100/50 border border-white relative overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden font-sans text-blue-900">
+      <div ref={mapBgRef} className="absolute inset-0 z-0" />
+      <div className="absolute inset-0 z-10 bg-slate-900/40" />
+
+      <div className="relative z-20 flex min-h-screen items-center justify-center px-4">
+        <main className="w-full max-w-md rounded-[2.5rem] bg-white p-10 shadow-2xl shadow-blue-100/50 border border-white relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-2 bg-blue-600"></div>
         <h1 className="mb-2 text-4xl font-black text-blue-900 text-center tracking-tight">
           Laundry{mode === "signup" ? "+" : ""}
@@ -455,7 +546,8 @@ export default function Home() {
             {error}
           </p>
         )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

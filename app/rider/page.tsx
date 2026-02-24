@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import 'leaflet/dist/leaflet.css';
+import { io } from 'socket.io-client';
 
 // Dynamically import Leaflet components to avoid SSR issues
 const MapContainer = dynamic(
@@ -77,6 +78,21 @@ type Shop = {
     location?: { coordinates: number[] };
 };
 
+function getUserIdFromAccessToken(token: string | null) {
+    try {
+        if (!token) return null;
+        const payloadBase64 = token.split('.')[1];
+        if (!payloadBase64) return null;
+
+        const normalized = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+        const parsed = JSON.parse(atob(padded)) as { sub?: string };
+        return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
 export default function RiderDashboard() {
     const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
     const [myTasks, setMyTasks] = useState<Order[]>([]);
@@ -98,6 +114,13 @@ export default function RiderDashboard() {
         pickupAtShop: false,
         sendBack: false,
     });
+
+    const [shopsAlert, setShopsAlert] = useState(false);
+    const [pickupAtShopAlert, setPickupAtShopAlert] = useState(false);
+    const [sendBackAlert, setSendBackAlert] = useState(false);
+
+    const socketRef = useRef<ReturnType<typeof io> | null>(null);
+    const refreshTimerRef = useRef<number | null>(null);
 
     const ASSET_BASE_URL = useMemo(() => API_BASE_URL.replace(/\/api\/?$/, ''), []);
 
@@ -194,6 +217,51 @@ export default function RiderDashboard() {
 
         return () => {
             if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
+        };
+    }, []);
+
+    useEffect(() => {
+        const token = localStorage.getItem('access_token');
+        const userId = getUserIdFromAccessToken(token);
+        if (!userId) return;
+
+        const socketBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+        const socket = io(socketBaseUrl, {
+            transports: ['websocket'],
+        });
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            socket.emit('register', { userId });
+        });
+
+        socket.on('order:update', (order: any) => {
+            const status = typeof order?.status === 'string' ? order.status : '';
+
+            if (status === 'laundry_done') {
+                setPickupAtShopAlert(true);
+            }
+            if (status === 'out_for_delivery') {
+                setSendBackAlert(true);
+            }
+
+            if (refreshTimerRef.current) {
+                window.clearTimeout(refreshTimerRef.current);
+            }
+            refreshTimerRef.current = window.setTimeout(() => {
+                fetchAvailableOrders();
+                fetchMyTasks();
+            }, 300);
+        });
+
+        return () => {
+            if (refreshTimerRef.current) {
+                window.clearTimeout(refreshTimerRef.current);
+                refreshTimerRef.current = null;
+            }
+            socket.off('order:update');
+            socket.disconnect();
+            socketRef.current = null;
         };
     }, []);
 
@@ -388,6 +456,7 @@ export default function RiderDashboard() {
     const acceptOrder = async (orderId: string) => {
         try {
             await apiFetch(`/rider/accept/${orderId}`, { method: 'PATCH' });
+            setShopsAlert(true);
             alert('Order accepted successfully!');
             await fetchData();
         } catch (err: unknown) {
@@ -814,10 +883,23 @@ export default function RiderDashboard() {
                             <div className="px-1 pt-1 pb-2">
                                 <button
                                     type="button"
-                                    onClick={() => setOpenSections((p) => ({ ...p, shops: !p.shops }))}
+                                    onClick={() =>
+                                        setOpenSections((p) => {
+                                            const nextOpen = !p.shops;
+                                            if (nextOpen) setShopsAlert(false);
+                                            return { ...p, shops: nextOpen };
+                                        })
+                                    }
                                     className="w-full flex items-center justify-between mb-2"
                                 >
-                                    <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">Nearby Shops</span>
+                                    <span className="flex items-center gap-2 text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">
+                                        Nearby Shops
+                                        {shopsAlert && (
+                                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-white text-[9px] font-black animate-pulse">
+                                                !
+                                            </span>
+                                        )}
+                                    </span>
                                     <div className="flex items-center gap-2">
                                         {userLocation ? (
                                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">sorted by distance</span>
@@ -919,10 +1001,23 @@ export default function RiderDashboard() {
                             <div className="px-1 pt-1 pb-2">
                                 <button
                                     type="button"
-                                    onClick={() => setOpenSections((p) => ({ ...p, pickupAtShop: !p.pickupAtShop }))}
+                                    onClick={() =>
+                                        setOpenSections((p) => {
+                                            const nextOpen = !p.pickupAtShop;
+                                            if (nextOpen) setPickupAtShopAlert(false);
+                                            return { ...p, pickupAtShop: nextOpen };
+                                        })
+                                    }
                                     className="w-full flex items-center justify-between mb-2"
                                 >
-                                    <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">Pick up laundry at shop</span>
+                                    <span className="flex items-center gap-2 text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">
+                                        Pick up laundry at shop
+                                        {pickupAtShopAlert && (
+                                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-white text-[9px] font-black animate-pulse">
+                                                !
+                                            </span>
+                                        )}
+                                    </span>
                                     <div className="flex items-center gap-2">
                                         <span className="bg-blue-50 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-blue-100">
                                             {pickUpLaundryAtShopTasks.length} Tasks
@@ -1003,10 +1098,23 @@ export default function RiderDashboard() {
                             <div className="px-1 pt-1 pb-2">
                                 <button
                                     type="button"
-                                    onClick={() => setOpenSections((p) => ({ ...p, sendBack: !p.sendBack }))}
+                                    onClick={() =>
+                                        setOpenSections((p) => {
+                                            const nextOpen = !p.sendBack;
+                                            if (nextOpen) setSendBackAlert(false);
+                                            return { ...p, sendBack: nextOpen };
+                                        })
+                                    }
                                     className="w-full flex items-center justify-between mb-2"
                                 >
-                                    <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">Send back to customer</span>
+                                    <span className="flex items-center gap-2 text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">
+                                        Send back to customer
+                                        {sendBackAlert && (
+                                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-white text-[9px] font-black animate-pulse">
+                                                !
+                                            </span>
+                                        )}
+                                    </span>
                                     <div className="flex items-center gap-2">
                                         <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-emerald-100">
                                             {sendBackToCustomerTasks.length} Tasks

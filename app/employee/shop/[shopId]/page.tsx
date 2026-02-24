@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_BASE_URL } from '@/lib/api';
 import { useParams } from 'next/navigation';
+import { io } from 'socket.io-client';
 
 type EmployeeInfo = {
   _id?: string;
@@ -41,6 +42,21 @@ type JoinRequestEmployee = {
   lastName?: string;
 };
 
+function getUserIdFromAccessToken(token: string | null) {
+  if (!token) return null;
+  try {
+    const payloadBase64 = token.split('.')[1];
+    if (!payloadBase64) return null;
+
+    const normalized = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    const parsed = JSON.parse(atob(padded)) as { sub?: string };
+    return typeof parsed.sub === 'string' && parsed.sub.trim() ? parsed.sub.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function EmployeeShopPage() {
   const params = useParams<{ shopId: string }>();
   const shopId = String(params?.shopId || '');
@@ -73,6 +89,33 @@ export default function EmployeeShopPage() {
 
   useEffect(() => {
     fetchOrders();
+  }, [shopId]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    const userId = getUserIdFromAccessToken(token);
+    if (!userId || !shopId) return;
+
+    const socketBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+    const socket = io(socketBaseUrl, {
+      transports: ['websocket'],
+    });
+
+    socket.on('connect', () => {
+      socket.emit('register', { userId, shopId });
+    });
+
+    socket.on('order:update', (order: any) => {
+      const incomingShopId = order?.shopId ? String(order.shopId) : '';
+      if (incomingShopId && incomingShopId === shopId) {
+        fetchOrders();
+      }
+    });
+
+    return () => {
+      socket.off('order:update');
+      socket.disconnect();
+    };
   }, [shopId]);
 
   useEffect(() => {
