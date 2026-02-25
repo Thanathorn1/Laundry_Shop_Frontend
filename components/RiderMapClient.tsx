@@ -1,26 +1,28 @@
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
+import type { ComponentType } from 'react';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
+import type { MapContainerProps, TileLayerProps, MarkerProps, PopupProps } from 'react-leaflet';
 
 // Dynamically import Leaflet components
 const MapContainer = dynamic(
     () => import('react-leaflet').then((mod) => mod.MapContainer),
     { ssr: false }
-);
+) as ComponentType<MapContainerProps>;
 const TileLayer = dynamic(
     () => import('react-leaflet').then((mod) => mod.TileLayer),
     { ssr: false }
-);
+) as ComponentType<TileLayerProps>;
 const Marker = dynamic(
     () => import('react-leaflet').then((mod) => mod.Marker),
     { ssr: false }
-);
+) as ComponentType<MarkerProps>;
 const Popup = dynamic(
     () => import('react-leaflet').then((mod) => mod.Popup),
     { ssr: false }
-);
+) as ComponentType<PopupProps>;
 const MapController = dynamic(
     () => import('react-leaflet').then((mod) => {
         const { useMap } = mod;
