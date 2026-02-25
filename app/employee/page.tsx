@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
+import { fetchRoadRoute } from '@/lib/road-route';
 
 type Shop = {
   _id: string;
@@ -30,6 +31,19 @@ type LeafletMarker = {
   remove: () => void;
 };
 
+type LeafletCircleMarker = {
+  addTo: (map: LeafletMap) => LeafletCircleMarker;
+  bindPopup: (content: string) => LeafletCircleMarker;
+  openPopup: () => LeafletCircleMarker;
+  remove: () => void;
+};
+
+type LeafletPolyline = {
+  addTo: (map: LeafletMap) => LeafletPolyline;
+  bindPopup: (content: string) => LeafletPolyline;
+  remove: () => void;
+};
+
 type LeafletMap = {
   setView: (center: [number, number], zoom: number) => void;
   invalidateSize: () => void;
@@ -40,6 +54,26 @@ type LeafletLib = {
   map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
   tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
   marker: (latLng: [number, number]) => LeafletMarker;
+  circleMarker: (latLng: [number, number], options?: { radius?: number; color?: string; fillColor?: string; fillOpacity?: number; weight?: number }) => LeafletCircleMarker;
+  polyline: (latLngs: [number, number][], options?: { color?: string; weight?: number; opacity?: number }) => LeafletPolyline;
+};
+
+type ShopOrder = {
+  _id: string;
+  riderId?: string | { _id?: string } | null;
+  status?: string;
+  createdAt?: string;
+};
+
+type RiderOverlay = {
+  key: string;
+  riderId: string;
+  riderLat: number;
+  riderLng: number;
+  shopId: string;
+  shopName: string;
+  status: string;
+  routePoints: [number, number][];
 };
 
 async function loadLeaflet() {
@@ -94,6 +128,8 @@ function toImageSrc(input?: string) {
 
 export default function EmployeePage() {
   const [shops, setShops] = useState<Shop[]>([]);
+  const [shopOrderCountById, setShopOrderCountById] = useState<Record<string, number>>({});
+  const [riderOverlays, setRiderOverlays] = useState<RiderOverlay[]>([]);
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = useState<'alpha-asc' | 'alpha-desc' | 'newest' | 'oldest'>('alpha-asc');
   const [me, setMe] = useState<MyEmployeeProfile | null>(null);
@@ -104,6 +140,8 @@ export default function EmployeePage() {
   const mapRef = useRef<LeafletMap | null>(null);
   const leafletRef = useRef<LeafletLib | null>(null);
   const markersRef = useRef<LeafletMarker[]>([]);
+  const riderMarkersRef = useRef<LeafletCircleMarker[]>([]);
+  const riderRouteLinesRef = useRef<LeafletPolyline[]>([]);
   const markerByShopIdRef = useRef<Record<string, LeafletMarker>>({});
 
   const isMemberOfShop = (shopId: string) => {
@@ -252,6 +290,143 @@ export default function EmployeePage() {
     }
   }, [shops]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchShopOrdersAndRiders = async () => {
+      if (shops.length === 0) {
+        setShopOrderCountById({});
+        setRiderOverlays([]);
+        return;
+      }
+
+      const counts: Record<string, number> = {};
+      const overlays: RiderOverlay[] = [];
+      const accessibleShopIds = new Set(
+        shops
+          .filter((shop) => isMemberOfShop(shop._id))
+          .map((shop) => String(shop._id)),
+      );
+
+      await Promise.all(
+        shops.map(async (shop) => {
+          try {
+            const shopName = shop.shopName || shop.label || 'Laundry Shop';
+            const shopCoords = shop.location?.coordinates;
+            const shopLat = Array.isArray(shopCoords) && shopCoords.length >= 2 ? shopCoords[1] : null;
+            const shopLng = Array.isArray(shopCoords) && shopCoords.length >= 2 ? shopCoords[0] : null;
+
+            const ordersData = await apiFetch(`/employee/shops/${shop._id}/orders`);
+            const orders = Array.isArray(ordersData) ? (ordersData as ShopOrder[]) : [];
+            counts[shop._id] = orders.length;
+
+            const latestOrderByRider = new Map<string, ShopOrder>();
+            for (const order of orders) {
+              const riderIdRaw = order?.riderId;
+              const riderId =
+                typeof riderIdRaw === 'string'
+                  ? riderIdRaw
+                  : riderIdRaw && typeof riderIdRaw === 'object' && typeof riderIdRaw._id === 'string'
+                    ? riderIdRaw._id
+                    : '';
+
+              if (!riderId) continue;
+              if (!latestOrderByRider.has(riderId)) {
+                latestOrderByRider.set(riderId, order);
+              }
+            }
+
+            for (const [riderId, order] of latestOrderByRider.entries()) {
+              if (!accessibleShopIds.has(String(shop._id))) continue;
+
+              try {
+                const riderLocation = await apiFetch(`/rider/location/${riderId}`);
+                const riderCoords = riderLocation?.location?.coordinates;
+                if (!Array.isArray(riderCoords) || riderCoords.length < 2) continue;
+
+                const riderLng = Number(riderCoords[0]);
+                const riderLat = Number(riderCoords[1]);
+                if (!Number.isFinite(riderLat) || !Number.isFinite(riderLng)) continue;
+
+                let routePoints: [number, number][] = [];
+                const status = String(order?.status || 'unknown');
+                const shouldShowRouteToShop = ['picked_up', 'laundry_done'].includes(status);
+
+                if (shouldShowRouteToShop && Number.isFinite(shopLat) && Number.isFinite(shopLng)) {
+                  const route = await fetchRoadRoute([riderLat, riderLng], [Number(shopLat), Number(shopLng)]);
+                  routePoints = route.points.length >= 2 ? route.points : [[riderLat, riderLng], [Number(shopLat), Number(shopLng)]];
+                }
+
+                overlays.push({
+                  key: `${shop._id}-${riderId}`,
+                  riderId,
+                  riderLat,
+                  riderLng,
+                  shopId: shop._id,
+                  shopName,
+                  status,
+                  routePoints,
+                });
+              } catch {
+                // ignore rider location fetch errors
+              }
+            }
+          } catch {
+            counts[shop._id] = counts[shop._id] ?? 0;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+      setShopOrderCountById(counts);
+      setRiderOverlays(overlays);
+    };
+
+    fetchShopOrdersAndRiders();
+    const interval = window.setInterval(fetchShopOrdersAndRiders, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [shops]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = leafletRef.current;
+    if (!map || !L) return;
+
+    riderMarkersRef.current.forEach((item) => item.remove());
+    riderMarkersRef.current = [];
+    riderRouteLinesRef.current.forEach((line) => line.remove());
+    riderRouteLinesRef.current = [];
+
+    riderOverlays.forEach((overlay) => {
+      if (overlay.routePoints.length >= 2) {
+        const routeLine = L.polyline(overlay.routePoints, {
+          color: '#2563eb',
+          weight: 4,
+          opacity: 0.85,
+        })
+          .bindPopup(`<div style="font-weight:700">Rider route to ${overlay.shopName}</div><div style="font-size:12px;color:#475569">Status: ${overlay.status.replace(/_/g, ' ')}</div>`)
+          .addTo(map);
+        riderRouteLinesRef.current.push(routeLine);
+      }
+
+      const riderPin = L.circleMarker([overlay.riderLat, overlay.riderLng], {
+        radius: 7,
+        color: '#1d4ed8',
+        fillColor: '#3b82f6',
+        fillOpacity: 0.95,
+        weight: 2,
+      })
+        .bindPopup(`<div style="min-width:170px"><div style="font-weight:700;margin-bottom:4px">Rider</div><div style="font-size:12px;color:#475569">Shop: ${overlay.shopName}</div><div style="font-size:12px;color:#475569">Status: ${overlay.status.replace(/_/g, ' ')}</div></div>`)
+        .addTo(map);
+
+      riderMarkersRef.current.push(riderPin);
+    });
+  }, [riderOverlays]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -299,6 +474,7 @@ export default function EmployeePage() {
             <h3 className="text-sm font-black text-blue-900">{shop.shopName || shop.label || 'Laundry Shop'}</h3>
             <p className="mt-1 text-xs font-semibold text-blue-600">☎ {shop.phoneNumber || '-'}</p>
             <p className="mt-1 text-xs font-semibold text-blue-500">{shop.distanceKm != null ? `${shop.distanceKm} km` : '-'}</p>
+            <p className="mt-1 text-xs font-black text-indigo-600">Orders in shop: {shopOrderCountById[shop._id] ?? 0}</p>
 
             {isMemberOfShop(shop._id) ? (
               <Link
@@ -306,7 +482,7 @@ export default function EmployeePage() {
                 onClick={(event) => event.stopPropagation()}
                 className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-blue-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-blue-700 hover:bg-blue-100"
               >
-                Enter Shop
+                Enter Shop ({shopOrderCountById[shop._id] ?? 0})
               </Link>
             ) : me?.joinRequestStatus === 'pending' && me?.joinRequestShopId === shop._id ? (
               <button

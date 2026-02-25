@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
+import { fetchRoadRoute } from '@/lib/road-route';
 import 'leaflet/dist/leaflet.css';
 import { io } from 'socket.io-client';
 
@@ -21,6 +22,14 @@ const Marker = dynamic(
 );
 const Popup = dynamic(
     () => import('react-leaflet').then((mod) => mod.Popup),
+    { ssr: false }
+);
+const CircleMarker = dynamic(
+    () => import('react-leaflet').then((mod) => mod.CircleMarker),
+    { ssr: false }
+);
+const Polyline = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Polyline),
     { ssr: false }
 );
 const MapController = dynamic(
@@ -78,6 +87,12 @@ type Shop = {
     location?: { coordinates: number[] };
 };
 
+type RouteLine = {
+    orderId: string;
+    points: [number, number][];
+    color: string;
+};
+
 function getUserIdFromAccessToken(token: string | null) {
     try {
         if (!token) return null;
@@ -94,11 +109,14 @@ function getUserIdFromAccessToken(token: string | null) {
 }
 
 export default function RiderDashboard() {
+    const [isMapClientReady, setIsMapClientReady] = useState(false);
+    const [isLeafletMapReady, setIsLeafletMapReady] = useState(false);
     const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
     const [myTasks, setMyTasks] = useState<Order[]>([]);
     const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
     const [shops, setShops] = useState<Shop[]>([]);
     const [handoverShopByOrderId, setHandoverShopByOrderId] = useState<Record<string, string>>({});
+    const [handoverReadyByOrderId, setHandoverReadyByOrderId] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
@@ -107,6 +125,7 @@ export default function RiderDashboard() {
         center: [13.7563, 100.5018], // Default Bangkok
         zoom: 13
     });
+    const [taskRouteLines, setTaskRouteLines] = useState<RouteLine[]>([]);
 
     const [openSections, setOpenSections] = useState({
         orders: true,
@@ -140,6 +159,7 @@ export default function RiderDashboard() {
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
+    const lastLocationSyncAtRef = useRef<number>(0);
 
     const ASSET_BASE_URL = useMemo(() => API_BASE_URL.replace(/\/api\/?$/, ''), []);
 
@@ -214,6 +234,16 @@ export default function RiderDashboard() {
     }, [leaflet]);
 
     useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setIsMapClientReady(true);
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, []);
+
+    useEffect(() => {
         fetchData();
 
         let watchId: number;
@@ -225,6 +255,25 @@ export default function RiderDashboard() {
                         lon: position.coords.longitude
                     };
                     setUserLocation(coords);
+
+                    const now = Date.now();
+                    if (now - lastLocationSyncAtRef.current >= 5000) {
+                        const token = localStorage.getItem('access_token');
+                        const riderId = getUserIdFromAccessToken(token);
+                        if (riderId) {
+                            lastLocationSyncAtRef.current = now;
+                            apiFetch('/rider/location', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    riderId,
+                                    location: { lat: coords.lat, lng: coords.lon },
+                                }),
+                            }).catch(() => {
+                                // ignore location sync errors
+                            });
+                        }
+                    }
+
                     // Only auto-center on first load to avoid disrupting user interaction
                     if (!userLocation) {
                         setMapView({ center: [coords.lat, coords.lon], zoom: 13 });
@@ -414,6 +463,107 @@ export default function RiderDashboard() {
         return map;
     }, [shops]);
 
+    useEffect(() => {
+        setHandoverShopByOrderId((prev) => {
+            const next = { ...prev };
+            (myTasks || []).forEach((task) => {
+                if (task?.status === 'picked_up' && task?.shopId) {
+                    next[task._id] = String(task.shopId);
+                }
+            });
+            return next;
+        });
+    }, [myTasks]);
+
+    const routeColorByStatus = (status: string) => {
+        if (status === 'assigned') return '#2563eb';
+        if (status === 'picked_up') return '#0284c7';
+        if (status === 'laundry_done') return '#1d4ed8';
+        if (status === 'out_for_delivery') return '#059669';
+        return '#2563eb';
+    };
+
+    const getPickupTarget = (order: Order): [number, number] | null => {
+        const lat = order.pickupLocation?.coordinates?.[1];
+        const lon = order.pickupLocation?.coordinates?.[0];
+        if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+        return [lat, lon];
+    };
+
+    const getDeliveryTarget = (order: Order): [number, number] | null => {
+        const lat = order.deliveryLocation?.coordinates?.[1] ?? order.pickupLocation?.coordinates?.[1];
+        const lon = order.deliveryLocation?.coordinates?.[0] ?? order.pickupLocation?.coordinates?.[0];
+        if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+        return [lat, lon];
+    };
+
+    const getShopTarget = (order: Order): [number, number] | null => {
+        const selectedShopId = handoverShopByOrderId[order._id] || (order.shopId ? String(order.shopId) : '');
+        if (!selectedShopId) return null;
+        const shop = shopsById.get(selectedShopId);
+        const coords = shop?.location?.coordinates;
+        if (!Array.isArray(coords) || coords.length < 2) return null;
+        const lat = coords[1];
+        const lon = coords[0];
+        if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+        return [lat, lon];
+    };
+
+    const getRouteTargetForTask = (order: Order): [number, number] | null => {
+        if (order.status === 'assigned') return getPickupTarget(order);
+        if (order.status === 'picked_up') return getShopTarget(order);
+        if (order.status === 'laundry_done') return getShopTarget(order);
+        if (order.status === 'out_for_delivery') return getDeliveryTarget(order);
+        return null;
+    };
+
+    useEffect(() => {
+        let active = true;
+
+        const drawRoutes = async () => {
+            if (!userLocation) {
+                setTaskRouteLines([]);
+                return;
+            }
+
+            const moveTasks = (myTasks || []).filter((task) =>
+                ['assigned', 'picked_up', 'laundry_done', 'out_for_delivery'].includes(task.status),
+            );
+
+            if (!moveTasks.length) {
+                setTaskRouteLines([]);
+                return;
+            }
+
+            const origin: [number, number] = [userLocation.lat, userLocation.lon];
+
+            const lines = await Promise.all(
+                moveTasks.map(async (task) => {
+                    const target = getRouteTargetForTask(task);
+                    if (!target) return null;
+
+                    const route = await fetchRoadRoute(origin, target);
+                    const points = route.points.length >= 2 ? route.points : [origin, target];
+
+                    return {
+                        orderId: task._id,
+                        points,
+                        color: routeColorByStatus(task.status),
+                    } as RouteLine;
+                }),
+            );
+
+            if (!active) return;
+            setTaskRouteLines(lines.filter((line): line is RouteLine => Boolean(line)));
+        };
+
+        drawRoutes();
+
+        return () => {
+            active = false;
+        };
+    }, [myTasks, userLocation, shopsById, handoverShopByOrderId]);
+
     const pickUpLaundryAtShopTasks = useMemo(
         () => (myTasks || []).filter((o) => o?.status === 'laundry_done'),
         [myTasks]
@@ -495,7 +645,11 @@ export default function RiderDashboard() {
             })
             .filter((o): o is Order => Boolean(o));
 
-        const filtered = updated.filter((order) => maxDistance === 0 || (order.distance !== undefined && order.distance <= maxDistance));
+        const filtered = updated.filter(
+            (order) =>
+                ['pending', 'assigned'].includes(order.status) &&
+                (maxDistance === 0 || (order.distance !== undefined && order.distance <= maxDistance)),
+        );
 
         setFilteredOrders(filtered);
     }, [availableOrders, myTasks, userLocation, maxDistance]);
@@ -524,9 +678,9 @@ export default function RiderDashboard() {
     };
 
     const handoverToShop = async (orderId: string, targetShopId?: string) => {
-        const shopId = targetShopId || handoverShopByOrderId[orderId] || shops[0]?._id;
+        const shopId = targetShopId || handoverShopByOrderId[orderId];
         if (!shopId) {
-            alert('Please select a shop');
+            alert('Please select shop first to preview route, then send to shop');
             return;
         }
 
@@ -535,10 +689,39 @@ export default function RiderDashboard() {
                 method: 'PATCH',
                 body: JSON.stringify({ shopId }),
             });
+            setHandoverReadyByOrderId((prev) => {
+                const next = { ...prev };
+                delete next[orderId];
+                return next;
+            });
             await fetchData();
         } catch (err: unknown) {
             alert(err instanceof Error ? err.message : String(err));
         }
+    };
+
+    const selectShopForOrder = async (orderId: string, shopId: string | null) => {
+        await apiFetch(`/rider/select-shop/${orderId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ shopId }),
+        });
+    };
+
+    const cancelShopSelection = (orderId: string) => {
+        setHandoverShopByOrderId((prev) => {
+            const next = { ...prev };
+            delete next[orderId];
+            return next;
+        });
+        setHandoverReadyByOrderId((prev) => {
+            const next = { ...prev };
+            delete next[orderId];
+            return next;
+        });
+
+        selectShopForOrder(orderId, null).catch(() => {
+            // ignore selection sync errors
+        });
     };
 
     const pickUpLaundryFromShop = async (orderId: string) => {
@@ -600,34 +783,46 @@ export default function RiderDashboard() {
         <div className="relative h-screen w-full overflow-hidden bg-slate-50">
             {/* MapContainer - Client Only */}
             <div className="absolute inset-0 z-0 h-full w-full">
-                {typeof window !== 'undefined' && (
+                {isMapClientReady && typeof window !== 'undefined' && (
                     <MapContainer
                         center={mapView.center}
                         zoom={mapView.zoom}
                         scrollWheelZoom={true}
                         style={{ height: '100%', width: '100%' }}
                         zoomControl={false}
+                        whenReady={() => setIsLeafletMapReady(true)}
                     >
-                        <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-                        <MapController center={mapView.center} zoom={mapView.zoom} />
+                        {isLeafletMapReady && (
+                            <>
+                                <TileLayer
+                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                />
+                                <MapController center={mapView.center} zoom={mapView.zoom} />
 
-                        {userLocation && riderIcon && (
-                            <Marker position={[userLocation.lat, userLocation.lon]} icon={riderIcon}>
-                                <Popup>
-                                    <div className="p-2">
-                                        <p className="font-black text-blue-600 text-xs uppercase tracking-widest">Your Location</p>
-                                    </div>
-                                </Popup>
-                            </Marker>
-                        )}
+                                {taskRouteLines.map((line) => (
+                                    <Polyline
+                                        key={`route-${line.orderId}`}
+                                        positions={line.points}
+                                        pathOptions={{ color: line.color, weight: 5, opacity: 0.85 }}
+                                    />
+                                ))}
 
-                        {shops.map((shop) => {
+                                {userLocation && riderIcon && (
+                                    <Marker position={[userLocation.lat, userLocation.lon]} icon={riderIcon}>
+                                        <Popup>
+                                            <div className="p-2">
+                                                <p className="font-black text-blue-600 text-xs uppercase tracking-widest">Your Location</p>
+                                            </div>
+                                        </Popup>
+                                    </Marker>
+                                )}
+
+                            {shops.map((shop) => {
                             const coords = shop.location?.coordinates;
                             if (!Array.isArray(coords) || coords.length < 2 || !shopIcon) return null;
                             const name = shop.shopName || shop.label || 'Shop';
+                                const readyTasksAtShop = pickUpLaundryAtShopTasks.filter((task) => String(task.shopId || '') === String(shop._id));
                             const distKm =
                                 userLocation && typeof coords[1] === 'number' && typeof coords[0] === 'number'
                                     ? parseFloat(calculateDistance(userLocation.lat, userLocation.lon, coords[1], coords[0]).toFixed(1))
@@ -659,13 +854,77 @@ export default function RiderDashboard() {
                                                     <span className="text-[10px] font-black text-slate-600 bg-slate-50 px-2 py-1 rounded">☎ {shop.phoneNumber}</span>
                                                 ) : null}
                                             </div>
+
+                                            {readyTasksAtShop.length > 0 && (
+                                                <div className="mt-3 space-y-2 border-t border-slate-100 pt-2">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Pickup at shop</p>
+                                                    {readyTasksAtShop.slice(0, 2).map((task) => (
+                                                        <button
+                                                            key={`pickup-at-shop-pin-${task._id}`}
+                                                            onClick={() => pickUpLaundryFromShop(task._id)}
+                                                            className="w-full rounded-lg bg-blue-600 py-1.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-blue-700"
+                                                        >
+                                                            Pick Up {task.customerName || task.productName || 'Order'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </Popup>
                                 </Marker>
                             );
-                        })}
+                            })}
 
-                        {filteredOrders.map((order) => (
+                            {sendBackToCustomerTasks.map((order) => {
+                            const lat = order.deliveryLocation?.coordinates?.[1] ?? order.pickupLocation?.coordinates?.[1];
+                            const lon = order.deliveryLocation?.coordinates?.[0] ?? order.pickupLocation?.coordinates?.[0];
+                            if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+
+                            return (
+                                <CircleMarker
+                                    key={`return-customer-${order._id}`}
+                                    center={[lat, lon]}
+                                    radius={8}
+                                    pathOptions={{ color: '#059669', fillColor: '#10b981', fillOpacity: 0.9, weight: 2 }}
+                                >
+                                    <Popup>
+                                        <div className="p-3 w-56">
+                                            <p className="font-black text-emerald-600 text-xs uppercase tracking-widest">Customer Destination</p>
+                                            <p className="text-sm font-black text-blue-900 mt-1 line-clamp-1">{order.customerName || order.productName || 'Order'}</p>
+                                            <p className="text-[10px] text-slate-500 font-bold mt-2 line-clamp-2">{order.deliveryAddress || order.pickupAddress}</p>
+
+                                            {Array.isArray(order.images) && order.images.length > 0 && (
+                                                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                                                    {order.images.slice(0, 2).map((image, index) => (
+                                                        <img
+                                                            key={`${order._id}-destination-img-${index}`}
+                                                            src={resolveAssetUrl(image)}
+                                                            alt={`Laundry image ${index + 1}`}
+                                                            className="h-16 w-full rounded-lg object-cover border border-slate-100"
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <span className="inline-flex mt-2 text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
+                                                {statusLabel(order.status)}
+                                            </span>
+
+                                            {order.status === 'out_for_delivery' && (
+                                                <button
+                                                    onClick={() => completeDelivery(order._id)}
+                                                    className="mt-2 w-full rounded-lg bg-emerald-600 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                                >
+                                                    Delivered
+                                                </button>
+                                            )}
+                                        </div>
+                                    </Popup>
+                                </CircleMarker>
+                            );
+                            })}
+
+                            {filteredOrders.map((order) => (
                             order.location && icon && (
                                 <Marker
                                     key={order._id}
@@ -718,12 +977,27 @@ export default function RiderDashboard() {
                                                 <div className="space-y-2">
                                                     <select
                                                         value={handoverShopByOrderId[order._id] || ''}
-                                                        onChange={(e) =>
+                                                        onChange={(e) => {
+                                                            const selectedShopId = e.target.value;
                                                             setHandoverShopByOrderId((prev) => ({
                                                                 ...prev,
-                                                                [order._id]: e.target.value,
-                                                            }))
-                                                        }
+                                                                [order._id]: selectedShopId,
+                                                            }));
+                                                            setHandoverReadyByOrderId((prev) => ({
+                                                                ...prev,
+                                                                [order._id]: false,
+                                                            }));
+
+                                                            const selectedShop = shops.find((s) => s._id === selectedShopId);
+                                                            const coords = selectedShop?.location?.coordinates;
+                                                            if (Array.isArray(coords) && coords.length >= 2) {
+                                                                setMapView({ center: [coords[1], coords[0]], zoom: 16 });
+                                                            }
+
+                                                            selectShopForOrder(order._id, selectedShopId).catch(() => {
+                                                                // ignore selection sync errors
+                                                            });
+                                                        }}
                                                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black text-blue-900 uppercase tracking-widest"
                                                     >
                                                         <option value="" disabled>
@@ -736,11 +1010,39 @@ export default function RiderDashboard() {
                                                         ))}
                                                     </select>
                                                     <button
-                                                        onClick={() => handoverToShop(order._id)}
-                                                        className="w-full bg-sky-600 text-white text-[10px] font-black py-2 rounded-lg hover:bg-sky-700 transition-colors shadow-lg shadow-sky-100 uppercase tracking-widest"
+                                                        onClick={() => {
+                                                            const selectedShopId = handoverShopByOrderId[order._id];
+                                                            if (!selectedShopId) {
+                                                                alert('Please select shop first to preview route, then send to shop');
+                                                                return;
+                                                            }
+
+                                                            const ready = handoverReadyByOrderId[order._id] === true;
+                                                            if (!ready) {
+                                                                setHandoverReadyByOrderId((prev) => ({
+                                                                    ...prev,
+                                                                    [order._id]: true,
+                                                                }));
+                                                                return;
+                                                            }
+
+                                                            handoverToShop(order._id, selectedShopId);
+                                                        }}
+                                                        className={`w-full text-white text-[10px] font-black py-2 rounded-lg transition-colors shadow-lg uppercase tracking-widest ${handoverReadyByOrderId[order._id]
+                                                            ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
+                                                            : 'bg-sky-600 hover:bg-sky-700 shadow-sky-100'
+                                                            }`}
                                                     >
-                                                        Send To Shop
+                                                        {handoverReadyByOrderId[order._id] ? 'Send To Shop' : 'Select Shop'}
                                                     </button>
+                                                    {handoverShopByOrderId[order._id] && (
+                                                        <button
+                                                            onClick={() => cancelShopSelection(order._id)}
+                                                            className="w-full bg-slate-200 text-slate-700 text-[10px] font-black py-2 rounded-lg hover:bg-slate-300 transition-colors uppercase tracking-widest"
+                                                        >
+                                                            Cancel Selection
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
 
@@ -765,7 +1067,9 @@ export default function RiderDashboard() {
                                     </Popup>
                                 </Marker>
                             )
-                        ))}
+                                ))}
+                            </>
+                        )}
                     </MapContainer>
                 )}
             </div>
@@ -1035,15 +1339,52 @@ export default function RiderDashboard() {
                                                                             <p className="text-[10px] font-bold text-slate-700 line-clamp-1 flex-1">
                                                                                 {order.customerName || order.productName || 'Order'}
                                                                             </p>
-                                                                            <button
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    handoverToShop(order._id, shop._id);
-                                                                                }}
-                                                                                className="bg-sky-600 text-[10px] font-black text-white px-3 py-1.5 rounded-xl hover:bg-sky-700 transition-colors shadow-lg shadow-sky-100 whitespace-nowrap"
-                                                                            >
-                                                                                Send
-                                                                            </button>
+                                                                            {(() => {
+                                                                                const selected = handoverShopByOrderId[order._id] === shop._id;
+                                                                                return (
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                        <button
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                if (!selected) {
+                                                                                                    setHandoverShopByOrderId((prev) => ({
+                                                                                                        ...prev,
+                                                                                                        [order._id]: shop._id,
+                                                                                                    }));
+
+                                                                                                    selectShopForOrder(order._id, shop._id).catch(() => {
+                                                                                                        // ignore selection sync errors
+                                                                                                    });
+
+                                                                                                    const coords = shop.location?.coordinates;
+                                                                                                    if (Array.isArray(coords) && coords.length >= 2) {
+                                                                                                        setMapView({ center: [coords[1], coords[0]], zoom: 16 });
+                                                                                                    }
+                                                                                                    return;
+                                                                                                }
+
+                                                                                                handoverToShop(order._id, shop._id);
+                                                                                            }}
+                                                                                            className={`${selected
+                                                                                                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
+                                                                                                : 'bg-sky-600 hover:bg-sky-700 shadow-sky-100'} text-[10px] font-black text-white px-3 py-1.5 rounded-xl transition-colors shadow-lg whitespace-nowrap`}
+                                                                                        >
+                                                                                            {selected ? 'Send' : 'Select'}
+                                                                                        </button>
+                                                                                        {selected && (
+                                                                                            <button
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    cancelShopSelection(order._id);
+                                                                                                }}
+                                                                                                className="bg-slate-200 text-slate-700 text-[10px] font-black px-2.5 py-1.5 rounded-xl hover:bg-slate-300 transition-colors whitespace-nowrap"
+                                                                                            >
+                                                                                                Cancel
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
+                                                                                );
+                                                                            })()}
                                                                         </div>
                                                                     ))}
                                                                 </div>

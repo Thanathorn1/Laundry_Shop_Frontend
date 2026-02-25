@@ -26,6 +26,7 @@ type ShopOrder = {
   pickupAddress?: string;
   deliveryAddress?: string;
   totalPrice?: number;
+  images?: string[];
   customerId?: CustomerInfo;
   employeeId?: EmployeeInfo;
 };
@@ -42,6 +43,16 @@ type JoinRequestEmployee = {
   firstName?: string;
   lastName?: string;
 };
+
+const ASSET_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
+
+function resolveAssetUrl(value?: string) {
+  if (!value) return '';
+  if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:image/')) {
+    return value;
+  }
+  return `${ASSET_BASE_URL}${value.startsWith('/') ? value : `/${value}`}`;
+}
 
 function getUserIdFromAccessToken(token: string | null) {
   if (!token) return null;
@@ -275,6 +286,23 @@ export default function EmployeeShopPage() {
                 <p><span className="font-black text-blue-900">Pickup:</span> {order.pickupAddress || '-'}</p>
                 <p><span className="font-black text-blue-900">Delivery:</span> {order.deliveryAddress || '-'}</p>
               </div>
+
+              {Array.isArray(order.images) && order.images.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-black uppercase tracking-widest text-blue-700">Laundry Basket Images</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {order.images.slice(0, 4).map((image, index) => (
+                      <div key={`${order._id}-img-${index}`} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                        <img
+                          src={resolveAssetUrl(image)}
+                          alt={`Order ${order._id} basket ${index + 1}`}
+                          className="h-24 w-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 flex flex-wrap gap-2">
                 <button

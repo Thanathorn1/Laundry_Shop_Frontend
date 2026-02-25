@@ -1,10 +1,47 @@
 "use client";
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import { io } from 'socket.io-client';
+import dynamic from 'next/dynamic';
+import 'leaflet/dist/leaflet.css';
+import { fetchRoadRoute } from '@/lib/road-route';
+
+const MapContainer = dynamic(
+    () => import('react-leaflet').then((mod) => mod.MapContainer),
+    { ssr: false }
+);
+const TileLayer = dynamic(
+    () => import('react-leaflet').then((mod) => mod.TileLayer),
+    { ssr: false }
+);
+const Marker = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Marker),
+    { ssr: false }
+);
+const Popup = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Popup),
+    { ssr: false }
+);
+const Polyline = dynamic(
+    () => import('react-leaflet').then((mod) => mod.Polyline),
+    { ssr: false }
+);
+const MapController = dynamic(
+    () => import('react-leaflet').then((mod) => {
+        const { useMap } = mod;
+        return function MapController({ center, zoom }: { center: [number, number], zoom: number }) {
+            const map = useMap();
+            useEffect(() => {
+                map.setView(center, zoom);
+            }, [center, zoom, map]);
+            return null;
+        };
+    }),
+    { ssr: false }
+);
 
 type LatLng = { lat: number; lng: number };
 
@@ -111,12 +148,26 @@ interface Order {
     pickupAt: string | null;
     totalPrice: number;
     createdAt: string;
+    deliveryAddress?: string | null;
+    riderId?: string | null;
+    shopId?: string | null;
     images?: string[];
     description?: string;
     pickupLocation?: {
         type: 'Point';
         coordinates: number[];
     };
+    deliveryLocation?: {
+        type: 'Point';
+        coordinates: number[];
+    };
+}
+
+interface Shop {
+    _id: string;
+    shopName?: string;
+    label?: string;
+    location?: { coordinates?: number[] };
 }
 
 interface CustomerProfile {
@@ -167,9 +218,77 @@ export default function CustomerPage() {
     const [panelPhoneNumber, setPanelPhoneNumber] = useState('');
     const [panelSaving, setPanelSaving] = useState(false);
     const [panelError, setPanelError] = useState<string | null>(null);
+    const [shops, setShops] = useState<Shop[]>([]);
+    const [riderLiveLocation, setRiderLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
+    const [trackingMapView, setTrackingMapView] = useState<{ center: [number, number]; zoom: number }>({
+        center: [13.7563, 100.5018],
+        zoom: 13,
+    });
+    const [trackingRoutePoints, setTrackingRoutePoints] = useState<[number, number][]>([]);
+    const [trackingSummary, setTrackingSummary] = useState<{ label: string; distanceKm: number | null; durationMin: number | null } | null>(null);
+
+    const [leaflet, setLeaflet] = useState<typeof import('leaflet') | null>(null);
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        import('leaflet')
+            .then((mod) => {
+                if (active) setLeaflet(mod);
+            })
+            .catch(() => {
+                // ignore leaflet import errors for optional custom icons
+            });
+
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    const riderIcon = useMemo(() => {
+        if (!leaflet) return null;
+        return leaflet.divIcon({
+            className: 'customer-rider-icon',
+            html: `
+                <div class="relative flex items-center justify-center">
+                    <div class="absolute h-6 w-6 rounded-full bg-blue-500/20 animate-ping"></div>
+                    <div class="h-4 w-4 rounded-full bg-blue-600 border-2 border-white shadow-lg ring-2 ring-blue-600/20"></div>
+                </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+        });
+    }, [leaflet]);
+
+    const customerIcon = useMemo(() => {
+        if (!leaflet) return null;
+        return leaflet.divIcon({
+            className: 'customer-point-icon',
+            html: `
+                <div class="relative flex items-center justify-center">
+                    <div class="h-4 w-4 rounded-full bg-emerald-600 border-2 border-white shadow-lg ring-2 ring-emerald-600/20"></div>
+                </div>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+        });
+    }, [leaflet]);
+
+    const shopIcon = useMemo(() => {
+        if (!leaflet) return null;
+        return leaflet.divIcon({
+            className: 'customer-shop-icon',
+            html: `
+                <div class="relative flex items-center justify-center">
+                    <div class="h-4 w-4 rounded-full bg-fuchsia-600 border-2 border-white shadow-lg ring-2 ring-fuchsia-600/20"></div>
+                </div>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+        });
+    }, [leaflet]);
 
     useEffect(() => {
         const token = localStorage.getItem('access_token');
@@ -182,12 +301,14 @@ export default function CustomerPage() {
 
         async function fetchData() {
             try {
-                const [ordersData, profileData] = await Promise.all([
+                const [ordersData, profileData, shopsData] = await Promise.all([
                     apiFetch('/customers/orders'),
                     apiFetch('/customers/me'),
+                    apiFetch('/map/shops'),
                 ]);
                 setOrders(ordersData);
                 setProfile(profileData);
+                setShops(Array.isArray(shopsData) ? shopsData : []);
                 setPanelFirstName((profileData?.firstName || '').trim());
                 setPanelLastName((profileData?.lastName || '').trim());
                 setPanelPhoneNumber((profileData?.phoneNumber || '').trim());
@@ -459,9 +580,165 @@ export default function CustomerPage() {
     };
 
     const activeOrders = orders.filter(o => !['completed', 'cancelled'].includes(o.status));
+    const trackedOrder = useMemo(() => {
+        if (!activeOrders.length) return null;
+        return [...activeOrders].sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0] || null;
+    }, [activeOrders]);
+
+    const shopsById = useMemo(() => {
+        const map = new Map<string, Shop>();
+        (shops || []).forEach((shop) => {
+            if (shop?._id) map.set(String(shop._id), shop);
+        });
+        return map;
+    }, [shops]);
+
+    const getCoordFromGeo = (coords?: number[]): [number, number] | null => {
+        if (!Array.isArray(coords) || coords.length < 2) return null;
+        const lat = coords[1];
+        const lng = coords[0];
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        return [lat, lng];
+    };
+
+    const getPickupPoint = (order: Order): [number, number] | null => getCoordFromGeo(order.pickupLocation?.coordinates);
+    const getDeliveryPoint = (order: Order): [number, number] | null =>
+        getCoordFromGeo(order.deliveryLocation?.coordinates) || getPickupPoint(order);
+    const getShopPoint = (order: Order): [number, number] | null => {
+        if (!order.shopId) return null;
+        const shop = shopsById.get(String(order.shopId));
+        return getCoordFromGeo(shop?.location?.coordinates);
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const syncRiderLocation = async () => {
+            if (!trackedOrder?.riderId) {
+                setRiderLiveLocation(null);
+                return;
+            }
+
+            try {
+                const payload = await apiFetch(`/rider/location/${trackedOrder.riderId}`);
+                const coordinates = payload?.location?.coordinates;
+                if (!Array.isArray(coordinates) || coordinates.length < 2) {
+                    if (!cancelled) setRiderLiveLocation(null);
+                    return;
+                }
+
+                const lng = Number(coordinates[0]);
+                const lat = Number(coordinates[1]);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                    if (!cancelled) setRiderLiveLocation(null);
+                    return;
+                }
+
+                if (!cancelled) {
+                    setRiderLiveLocation({ lat, lng });
+                }
+            } catch {
+                if (!cancelled) setRiderLiveLocation(null);
+            }
+        };
+
+        syncRiderLocation();
+        const interval = window.setInterval(syncRiderLocation, 5000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [trackedOrder?.riderId]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const computeTrackingRoute = async () => {
+            if (!trackedOrder) {
+                setTrackingRoutePoints([]);
+                setTrackingSummary(null);
+                return;
+            }
+
+            const pickupPoint = getPickupPoint(trackedOrder);
+            const deliveryPoint = getDeliveryPoint(trackedOrder);
+            const shopPoint = getShopPoint(trackedOrder);
+
+            let origin: [number, number] | null = null;
+            let target: [number, number] | null = null;
+            let label = '';
+
+            if (trackedOrder.status === 'assigned') {
+                origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : null;
+                target = pickupPoint;
+                label = 'Rider is coming to pickup point';
+            } else if (trackedOrder.status === 'picked_up') {
+                origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : pickupPoint;
+                target = shopPoint;
+                label = 'Rider is heading to laundry shop';
+            } else if (trackedOrder.status === 'at_shop' || trackedOrder.status === 'washing') {
+                origin = pickupPoint;
+                target = shopPoint;
+                label = 'Laundry is being processed at shop';
+            } else if (trackedOrder.status === 'laundry_done') {
+                origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : shopPoint;
+                target = shopPoint;
+                label = 'Laundry ready at shop';
+            } else if (trackedOrder.status === 'out_for_delivery') {
+                origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : shopPoint;
+                target = deliveryPoint;
+                label = 'Rider is returning your laundry';
+            } else {
+                target = pickupPoint;
+                label = 'Waiting for rider assignment';
+            }
+
+            if (!origin || !target) {
+                setTrackingRoutePoints([]);
+                setTrackingSummary({ label, distanceKm: null, durationMin: null });
+                if (target) setTrackingMapView({ center: target, zoom: 14 });
+                return;
+            }
+
+            const route = await fetchRoadRoute(origin, target);
+            const points = route.points.length >= 2 ? route.points : [origin, target];
+
+            if (cancelled) return;
+
+            setTrackingRoutePoints(points);
+            setTrackingSummary({
+                label,
+                distanceKm: route.distanceKm,
+                durationMin: route.durationMin,
+            });
+            setTrackingMapView({ center: target, zoom: 14 });
+        };
+
+        computeTrackingRoute();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [trackedOrder, riderLiveLocation, shopsById]);
+
     const hasRequiredCustomerInfo = Boolean(
         profile?.firstName?.trim() && profile?.lastName?.trim() && profile?.phoneNumber?.trim(),
     );
+    const trackedPickupPoint = trackedOrder ? getPickupPoint(trackedOrder) : null;
+    const trackedDeliveryPoint = trackedOrder ? getDeliveryPoint(trackedOrder) : null;
+    const trackedShopPoint = trackedOrder ? getShopPoint(trackedOrder) : null;
+    const trackingRouteColor = trackedOrder?.status === 'out_for_delivery'
+        ? '#059669'
+        : trackedOrder?.status === 'picked_up'
+            ? '#0284c7'
+            : trackedOrder?.status === 'at_shop' || trackedOrder?.status === 'washing'
+                ? '#a21caf'
+            : trackedOrder?.status === 'laundry_done'
+                ? '#1d4ed8'
+                : '#2563eb';
     const greeting = profile?.firstName?.trim() ? `Hello, ${profile.firstName} ${profile.lastName || ''}!` : 'Hello!';
 
     const openNewOrder = () => {
@@ -885,21 +1162,81 @@ export default function CustomerPage() {
 
                     {/* Right column */}
                     <div className="space-y-8">
-                        {/* Service Promos */}
+                        {/* Live Tracking Map */}
                         <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl shadow-blue-100/50 border border-white">
-                            <h3 className="text-xl font-black text-blue-900 mb-6">Service Promos</h3>
-                            <div className="grid gap-4">
-                                <div className="p-6 rounded-3xl bg-blue-600 text-white relative overflow-hidden shadow-lg shadow-blue-100">
-                                    <div className="absolute top-0 right-0 h-24 w-24 bg-white/10 rounded-bl-full -mr-8 -mt-8"></div>
-                                    <h4 className="text-lg font-black mb-1">Weekend Special</h4>
-                                    <p className="text-white/80 text-sm font-bold">20% OFF for all drying services!</p>
-                                </div>
-                                <div className="p-6 rounded-3xl bg-sky-500 text-white relative overflow-hidden shadow-lg shadow-sky-100">
-                                    <div className="absolute top-0 right-0 h-24 w-24 bg-white/10 rounded-bl-full -mr-8 -mt-8"></div>
-                                    <h4 className="text-lg font-black mb-1">Free Delivery</h4>
-                                    <p className="text-white/80 text-sm font-bold">For orders over ฿500. Order now!</p>
-                                </div>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-black text-blue-900">Live Tracking</h3>
+                                {trackedOrder && (
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black ${(STATUS_CONFIG[trackedOrder.status] || STATUS_CONFIG.pending).color} ${(STATUS_CONFIG[trackedOrder.status] || STATUS_CONFIG.pending).bg}`}>
+                                        {(STATUS_CONFIG[trackedOrder.status] || STATUS_CONFIG.pending).icon} {(STATUS_CONFIG[trackedOrder.status] || STATUS_CONFIG.pending).label}
+                                    </span>
+                                )}
                             </div>
+
+                            <div className="overflow-hidden rounded-3xl border border-slate-100 bg-slate-50">
+                                {typeof window !== 'undefined' && (
+                                    <MapContainer
+                                        center={trackingMapView.center}
+                                        zoom={trackingMapView.zoom}
+                                        scrollWheelZoom={true}
+                                        style={{ height: '320px', width: '100%' }}
+                                        zoomControl={false}
+                                    >
+                                        <TileLayer
+                                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                        />
+                                        <MapController center={trackingMapView.center} zoom={trackingMapView.zoom} />
+
+                                        {trackingRoutePoints.length >= 2 && (
+                                            <Polyline
+                                                positions={trackingRoutePoints}
+                                                pathOptions={{ color: trackingRouteColor, weight: 5, opacity: 0.85 }}
+                                            />
+                                        )}
+
+                                        {riderLiveLocation && riderIcon && (
+                                            <Marker position={[riderLiveLocation.lat, riderLiveLocation.lng]} icon={riderIcon}>
+                                                <Popup>Rider location</Popup>
+                                            </Marker>
+                                        )}
+
+                                        {trackedPickupPoint && customerIcon && (
+                                            <Marker position={trackedPickupPoint} icon={customerIcon}>
+                                                <Popup>Pickup point</Popup>
+                                            </Marker>
+                                        )}
+
+                                        {trackedDeliveryPoint && customerIcon && (
+                                            <Marker position={trackedDeliveryPoint} icon={customerIcon}>
+                                                <Popup>Delivery point</Popup>
+                                            </Marker>
+                                        )}
+
+                                        {trackedShopPoint && shopIcon && (
+                                            <Marker position={trackedShopPoint} icon={shopIcon}>
+                                                <Popup>Laundry shop</Popup>
+                                            </Marker>
+                                        )}
+                                    </MapContainer>
+                                )}
+                            </div>
+
+                            {trackedOrder ? (
+                                <div className="mt-4 space-y-2">
+                                    <p className="text-sm font-bold text-blue-900">{trackingSummary?.label || 'Tracking your active order'}</p>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-blue-700/70">
+                                        {trackingSummary?.distanceKm !== null && trackingSummary?.distanceKm !== undefined && (
+                                            <span className="rounded-xl bg-blue-50 px-3 py-1 border border-blue-100">Distance: {trackingSummary.distanceKm.toFixed(1)} km</span>
+                                        )}
+                                        {trackingSummary?.durationMin !== null && trackingSummary?.durationMin !== undefined && (
+                                            <span className="rounded-xl bg-emerald-50 px-3 py-1 border border-emerald-100">ETA: {Math.max(1, Math.round(trackingSummary.durationMin))} min</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="mt-4 text-sm font-semibold text-blue-700/70">Create an order to start live route tracking.</p>
+                            )}
                         </div>
 
                         {/* Recent Completed */}
