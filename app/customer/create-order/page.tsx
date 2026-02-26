@@ -433,7 +433,7 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 text-blue-900">
+    <div className="p-12">
       <main className="mx-auto w-full max-w-3xl rounded-[2rem] border border-white bg-white p-8 shadow-2xl shadow-blue-100/50">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl font-black tracking-tight">Create Order</h1>

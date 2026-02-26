@@ -1,38 +1,35 @@
-const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-const normalizedBaseUrl = rawApiBaseUrl.replace(/\/$/, '');
-export const API_BASE_URL = normalizedBaseUrl.endsWith('/api')
-  ? normalizedBaseUrl
-  : `${normalizedBaseUrl}/api`;
+﻿const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+
+export const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '').endsWith('/api')
+  ? RAW_API_BASE_URL.replace(/\/+$/, '')
+  : `${RAW_API_BASE_URL.replace(/\/+$/, '')}/api`;
+
+function joinUrl(baseUrl: string, path: string) {
+  const base = baseUrl.replace(/\/+$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${suffix}`;
+}
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('access_token');
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
 
-  if (!token && endpoint !== '/auth/signin' && endpoint !== '/auth/signup') {
-    throw new Error('กรุณาล็อคอินใหม่อีกครั้ง (Session Expired)');
-  }
-
-  // Don't set Content-Type if body is FormData; let browser set it with proper boundary
-  const headers: Record<string, string> = {};
-  if (!(options.body instanceof FormData)) {
-    headers['Content-Type'] = 'application/json';
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  if (options.headers && typeof options.headers === 'object') {
-    Object.assign(headers, options.headers);
+  if (typeof window !== 'undefined' && !token && endpoint !== '/auth/signin' && endpoint !== '/auth/signup') {
+    throw new Error('เธเธฃเธธเธ“เธฒเธฅเนเธญเธเธญเธดเธเนเธซเธกเนเธญเธตเธเธเธฃเธฑเนเธ (Session Expired)');
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const response = await fetch(joinUrl(API_BASE_URL, endpoint), {
     ...options,
     headers,
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    if (response.status === 401) {
-      throw new Error('Unauthorized. Please login again.');
-    }
     throw new Error(errorData.message || 'Something went wrong');
   }
 
@@ -42,7 +39,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 export async function apiUpload(endpoint: string, formData: FormData) {
   const token = localStorage.getItem('access_token');
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(joinUrl(API_BASE_URL, endpoint), {
     method: 'PATCH',
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   User,
@@ -8,7 +8,6 @@ import {
   Lock,
   Loader,
   AlertCircle,
-  ChevronRight,
   ArrowLeft,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -53,17 +52,7 @@ function CustomerProfileContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Check if user is authenticated
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.replace('/');
-      return;
-    }
-    fetchProfile();
-  }, [router]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -84,7 +73,17 @@ function CustomerProfileContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    // Check if user is authenticated
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.replace('/');
+      return;
+    }
+    fetchProfile();
+  }, [router, fetchProfile]);
 
   if (isLoading) {
     return (
@@ -115,7 +114,7 @@ function CustomerProfileContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6 pb-12">
+    <div className="p-12 pb-12">
       <div className="mx-auto max-w-4xl">
         {/* Back Button */}
         <div className="flex justify-end mb-4">

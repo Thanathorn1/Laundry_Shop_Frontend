@@ -120,7 +120,7 @@ function CustomerOrdersContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6 pb-12">
+    <div className="p-12 pb-12">
       <div className="mx-auto max-w-4xl">
         {/* Header */}
         <div className="mb-8">
@@ -145,8 +145,8 @@ function CustomerOrdersContent() {
               key={id}
               onClick={() => setFilter(id as any)}
               className={`rounded-full px-4 py-2 font-semibold transition-all ${filter === id
-                  ? "bg-blue-600 text-white shadow-lg"
-                  : "bg-white text-gray-700 hover:shadow-md"
+                ? "bg-blue-600 text-white shadow-lg"
+                : "bg-white text-gray-700 hover:shadow-md"
                 }`}
             >
               {label}
@@ -316,7 +316,7 @@ function CustomerOrdersContent() {
         <RatingModal
           isOpen={true}
           onClose={() => setSelectedOrderForRating(null)}
-          orderId={selectedOrderForRating}
+          orderId={selectedOrderForRating as string}
           onSubmit={handleRatingSubmit}
         />
       )}
