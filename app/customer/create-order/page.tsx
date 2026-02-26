@@ -525,7 +525,7 @@ export default function CreateOrderPage() {
           <div className="h-10 w-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
             <span className="text-white font-black text-xl">C</span>
           </div>
-          <h2 className="text-4 font-black text-blue-900 tracking-tight uppercase">Laundry Client</h2>
+          <h2 className="text-xl font-black text-blue-900 tracking-tight uppercase">Laundry Client</h2>
         </div>
         <nav className="space-y-1.5">
           <Link href="/customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">

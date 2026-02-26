@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import { io } from 'socket.io-client';
@@ -217,12 +217,6 @@ export default function CustomerPage() {
     const [editSaving, setEditSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [isAdminSession, setIsAdminSession] = useState(false);
-    const [showProfilePanel, setShowProfilePanel] = useState(false);
-    const [panelFirstName, setPanelFirstName] = useState('');
-    const [panelLastName, setPanelLastName] = useState('');
-    const [panelPhoneNumber, setPanelPhoneNumber] = useState('');
-    const [panelSaving, setPanelSaving] = useState(false);
-    const [panelError, setPanelError] = useState<string | null>(null);
     const [shops, setShops] = useState<Shop[]>([]);
     const [riderLiveLocation, setRiderLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
     const [trackingMapView, setTrackingMapView] = useState<{ center: [number, number]; zoom: number }>({
@@ -314,9 +308,6 @@ export default function CustomerPage() {
                 setOrders(ordersData);
                 setProfile(profileData);
                 setShops(Array.isArray(shopsData) ? shopsData : []);
-                setPanelFirstName((profileData?.firstName || '').trim());
-                setPanelLastName((profileData?.lastName || '').trim());
-                setPanelPhoneNumber((profileData?.phoneNumber || '').trim());
                 if (profileData?.role === 'admin') {
                     setIsAdminSession(true);
                     localStorage.setItem('auth_role', 'admin');
@@ -770,9 +761,6 @@ export default function CustomerPage() {
         };
     }, [trackedOrder, riderLiveLocation, shopsById]);
 
-    const hasRequiredCustomerInfo = Boolean(
-        profile?.firstName?.trim() && profile?.lastName?.trim() && profile?.phoneNumber?.trim(),
-    );
     const trackedPickupPoint = trackedOrder ? getPickupPoint(trackedOrder) : null;
     const trackedDeliveryPoint = trackedOrder ? getDeliveryPoint(trackedOrder) : null;
     const trackedShopPoint = trackedOrder ? getShopPoint(trackedOrder) : null;
@@ -788,48 +776,7 @@ export default function CustomerPage() {
     const greeting = profile?.firstName?.trim() ? `Hello, ${profile.firstName} ${profile.lastName || ''}!` : 'Hello!';
 
     const openNewOrder = () => {
-        if (!hasRequiredCustomerInfo) {
-            setPanelError(null);
-            setShowProfilePanel(true);
-            return;
-        }
         router.push('/customer/create-order');
-    };
-
-    const submitProfilePanel = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        setPanelError(null);
-
-        if (!panelFirstName.trim() || !panelLastName.trim() || !panelPhoneNumber.trim()) {
-            setPanelError('Please fill first name, last name and telephone number');
-            return;
-        }
-
-        setPanelSaving(true);
-        try {
-            await apiFetch('/customers/register', {
-                method: 'POST',
-                body: JSON.stringify({
-                    firstName: panelFirstName.trim(),
-                    lastName: panelLastName.trim(),
-                    phoneNumber: panelPhoneNumber.trim(),
-                }),
-            });
-
-            setProfile((prev) => ({
-                ...(prev || {}),
-                firstName: panelFirstName.trim(),
-                lastName: panelLastName.trim(),
-                phoneNumber: panelPhoneNumber.trim(),
-            }));
-            setShowProfilePanel(false);
-            router.push('/customer/create-order');
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to save profile';
-            setPanelError(message);
-        } finally {
-            setPanelSaving(false);
-        }
     };
 
     return (
@@ -998,66 +945,6 @@ export default function CustomerPage() {
                                 {editSaving ? 'Saving...' : 'Save Changes'}
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {showProfilePanel && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                    <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-                        <h3 className="text-xl font-black text-blue-900 mb-2">Complete your info</h3>
-                        <p className="text-sm font-medium text-blue-700/70 mb-4">Please add your name and phone before creating a new order.</p>
-
-                        <form className="space-y-3" onSubmit={submitProfilePanel}>
-                            <div>
-                                <label className="mb-1 block text-sm font-bold text-blue-900">First Name</label>
-                                <input
-                                    value={panelFirstName}
-                                    onChange={(e) => setPanelFirstName(e.target.value)}
-                                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-sm font-bold text-blue-900">Last Name</label>
-                                <input
-                                    value={panelLastName}
-                                    onChange={(e) => setPanelLastName(e.target.value)}
-                                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-sm font-bold text-blue-900">Telephone Number</label>
-                                <input
-                                    value={panelPhoneNumber}
-                                    onChange={(e) => setPanelPhoneNumber(e.target.value)}
-                                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
-                                    required
-                                />
-                            </div>
-
-                            {panelError && (
-                                <p className="rounded-xl bg-rose-100 px-3 py-2 text-sm font-semibold text-rose-700">{panelError}</p>
-                            )}
-
-                            <div className="flex gap-3 pt-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowProfilePanel(false)}
-                                    className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={panelSaving}
-                                    className="flex-1 rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50"
-                                >
-                                    {panelSaving ? 'Saving...' : 'Save & Continue'}
-                                </button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             )}
