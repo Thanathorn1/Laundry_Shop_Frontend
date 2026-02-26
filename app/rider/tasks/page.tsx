@@ -45,6 +45,7 @@ interface Task {
     deliveryAddress: string;
     status: 'pending' | 'assigned' | 'picked_up' | 'at_shop' | 'washing' | 'laundry_done' | 'out_for_delivery' | 'completed' | 'cancelled';
     totalPrice: number;
+    pickupType?: 'now' | 'schedule';
     pickupLocation?: {
         type: string;
         coordinates: [number, number]; // [lon, lat]
@@ -62,6 +63,9 @@ type Shop = {
     _id: string;
     shopName?: string;
     label?: string;
+    totalWashingMachines?: number;
+    machineInUse?: number;
+    machineAvailable?: number;
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
@@ -120,7 +124,7 @@ export default function MyTasks() {
     };
 
     const handoverToShop = async (orderId: string) => {
-        const shopId = handoverShopByOrderId[orderId] || shops[0]?._id;
+        const shopId = handoverShopByOrderId[orderId];
         if (!shopId) {
             alert('Please select a shop first');
             return;
@@ -296,6 +300,11 @@ export default function MyTasks() {
                                             )}
                                             {task.status === 'picked_up' && (
                                                 <div className="flex flex-1 gap-2">
+                                                    {task.pickupType === 'now' && (
+                                                        <p className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                                            Priority service: choose shop with available machine
+                                                        </p>
+                                                    )}
                                                     <select
                                                         value={handoverShopByOrderId[task._id] || ''}
                                                         onChange={(e) =>
@@ -310,8 +319,12 @@ export default function MyTasks() {
                                                             Select Shop
                                                         </option>
                                                         {shops.map((s) => (
-                                                            <option key={s._id} value={s._id}>
-                                                                {(s.shopName || s.label || 'Shop').toUpperCase()}
+                                                            <option
+                                                                key={s._id}
+                                                                value={s._id}
+                                                                disabled={task.pickupType === 'now' && (Number(s.machineAvailable) || 0) <= 0}
+                                                            >
+                                                                {`${(s.shopName || s.label || 'Shop').toUpperCase()} (${Number(s.machineAvailable) || 0}/${Number(s.totalWashingMachines) || 10})`}
                                                             </option>
                                                         ))}
                                                     </select>

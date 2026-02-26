@@ -57,6 +57,7 @@ interface Order {
     deliveryAddress: string;
     status: string;
     totalPrice: number;
+    pickupType?: 'now' | 'schedule';
     shopId?: string | null;
     pickupLocation?: { coordinates?: [number, number] };
     deliveryLocation?: { coordinates?: [number, number] };
@@ -84,6 +85,14 @@ type Shop = {
     label?: string;
     phoneNumber?: string;
     photoImage?: string;
+    totalWashingMachines?: number;
+    machineSizeConfig?: {
+        s?: number;
+        m?: number;
+        l?: number;
+    };
+    machineInUse?: number;
+    machineAvailable?: number;
     location?: { coordinates: number[] };
 };
 
@@ -822,6 +831,9 @@ export default function RiderDashboard() {
                             const coords = shop.location?.coordinates;
                             if (!Array.isArray(coords) || coords.length < 2 || !shopIcon) return null;
                             const name = shop.shopName || shop.label || 'Shop';
+                                const machineS = Number(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10) || 0;
+                                const machineM = Number(shop.machineSizeConfig?.m ?? 0) || 0;
+                                const machineL = Number(shop.machineSizeConfig?.l ?? 0) || 0;
                                 const readyTasksAtShop = pickUpLaundryAtShopTasks.filter((task) => String(task.shopId || '') === String(shop._id));
                             const distKm =
                                 userLocation && typeof coords[1] === 'number' && typeof coords[0] === 'number'
@@ -853,6 +865,7 @@ export default function RiderDashboard() {
                                                 {shop.phoneNumber ? (
                                                     <span className="text-[10px] font-black text-slate-600 bg-slate-50 px-2 py-1 rounded">☎ {shop.phoneNumber}</span>
                                                 ) : null}
+                                                <span className="text-[10px] font-black text-rose-700 bg-rose-50 px-2 py-1 rounded">S/M/L {machineS}/{machineM}/{machineL}</span>
                                             </div>
 
                                             {readyTasksAtShop.length > 0 && (
@@ -975,6 +988,11 @@ export default function RiderDashboard() {
 
                                             {order.status === 'picked_up' && (
                                                 <div className="space-y-2">
+                                                    {order.pickupType === 'now' && (
+                                                        <p className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                                            Priority service: choose shop with available machine only
+                                                        </p>
+                                                    )}
                                                     <select
                                                         value={handoverShopByOrderId[order._id] || ''}
                                                         onChange={(e) => {
@@ -1004,8 +1022,12 @@ export default function RiderDashboard() {
                                                             Select Shop
                                                         </option>
                                                         {shops.map((s) => (
-                                                            <option key={s._id} value={s._id}>
-                                                                {(s.shopName || s.label || 'Shop').toUpperCase()}
+                                                            <option
+                                                                key={s._id}
+                                                                value={s._id}
+                                                                disabled={order.pickupType === 'now' && (Number(s.machineAvailable) || 0) <= 0}
+                                                            >
+                                                                {`${(s.shopName || s.label || 'Shop').toUpperCase()} (${Number(s.machineAvailable) || 0}/${Number(s.totalWashingMachines) || 10})`}
                                                             </option>
                                                         ))}
                                                     </select>
@@ -1286,6 +1308,9 @@ export default function RiderDashboard() {
                                         ) : (
                                             nearbyShops.map(({ shop, distance }) => {
                                                 const name = shop.shopName || shop.label || 'Shop';
+                                                const machineS = Number(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10) || 0;
+                                                const machineM = Number(shop.machineSizeConfig?.m ?? 0) || 0;
+                                                const machineL = Number(shop.machineSizeConfig?.l ?? 0) || 0;
                                                 const shopTasks = myTasksByShopId.get(shop._id);
                                                 const counts = shopTasks?.counts;
                                                 const totalLaundry = shopTasks?.orders.length || 0;
@@ -1312,6 +1337,9 @@ export default function RiderDashboard() {
                                                                     )}
                                                                     <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 uppercase tracking-tighter">
                                                                         {totalLaundry} laundry
+                                                                    </span>
+                                                                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 uppercase tracking-tighter">
+                                                                        S/M/L {machineS}/{machineM}/{machineL}
                                                                     </span>
                                                                 </div>
                                                             </div>

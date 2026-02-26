@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import { useParams } from 'next/navigation';
 import { io } from 'socket.io-client';
+import { calculateOrderPriceSummary, getWashUnitPrice, getWeightCategoryLabel } from '@/lib/pricing';
 
 type EmployeeInfo = {
   _id?: string;
@@ -23,6 +24,10 @@ type ShopOrder = {
   _id: string;
   productName?: string;
   status: string;
+  laundryType?: 'wash' | 'dry';
+  weightCategory?: 's' | 'm' | 'l' | '0-4' | '6-10' | '10-20';
+  serviceTimeMinutes?: number;
+  pickupType?: 'now' | 'schedule';
   pickupAddress?: string;
   deliveryAddress?: string;
   totalPrice?: number;
@@ -270,6 +275,16 @@ export default function EmployeeShopPage() {
         {orders.map((order) => {
           const customerName = `${order.customerId?.firstName || ''} ${order.customerId?.lastName || ''}`.trim() || 'Customer';
           const employeeName = `${order.employeeId?.firstName || ''} ${order.employeeId?.lastName || ''}`.trim() || order.employeeId?.email || '-';
+          const isDryLaundry = order.laundryType === 'dry';
+          const displayServiceTime = typeof order.serviceTimeMinutes === 'number' ? order.serviceTimeMinutes : 50;
+          const unitPrice = isDryLaundry ? 20 : getWashUnitPrice(order.weightCategory);
+          const priceSummary = calculateOrderPriceSummary({
+            laundryType: order.laundryType,
+            weightCategory: order.weightCategory,
+            serviceTimeMinutes: order.serviceTimeMinutes,
+            pickupType: order.pickupType,
+          });
+          const displayPrice = typeof order.totalPrice === 'number' && order.totalPrice > 0 ? order.totalPrice : priceSummary.totalPrice;
 
           return (
             <div key={order._id} className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
@@ -278,6 +293,11 @@ export default function EmployeeShopPage() {
                   <h3 className="text-lg font-black text-blue-900">{order.productName || 'Laundry Order'}</h3>
                   <p className="text-xs text-blue-600 mt-1">Customer: {customerName}</p>
                   <p className="text-xs text-blue-600">Employee: {employeeName}</p>
+                  <p className="text-xs text-blue-600">
+                    Type: {isDryLaundry ? 'Dry Laundry' : 'Wash Laundry'}
+                    {order.weightCategory ? ` • Weight: ${getWeightCategoryLabel(order.weightCategory)}` : ''}
+                    {typeof order.serviceTimeMinutes === 'number' ? ` • Drying: ${order.serviceTimeMinutes} min` : ''}
+                  </p>
                 </div>
                 <span className="rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700">{order.status}</span>
               </div>
@@ -285,6 +305,11 @@ export default function EmployeeShopPage() {
               <div className="mt-4 grid gap-2 sm:grid-cols-2 text-sm">
                 <p><span className="font-black text-blue-900">Pickup:</span> {order.pickupAddress || '-'}</p>
                 <p><span className="font-black text-blue-900">Delivery:</span> {order.deliveryAddress || '-'}</p>
+              </div>
+              <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <p className="text-sm font-black text-emerald-800">Price: ฿{displayPrice.toLocaleString()}</p>
+                <p className="text-[11px] font-semibold text-emerald-700/90">สูตร: ({displayServiceTime} ÷ 50) × {unitPrice} บาท</p>
+                <p className="text-[11px] font-semibold text-emerald-700/90">+ Delivery 50 {order.pickupType === 'now' ? '+ Pickup Now 20' : '+ Pickup Schedule 0'}</p>
               </div>
 
               {Array.isArray(order.images) && order.images.length > 0 && (
@@ -309,13 +334,13 @@ export default function EmployeeShopPage() {
                   onClick={() => startWash(order._id)}
                   className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-700 hover:bg-amber-100"
                 >
-                  Start Wash
+                  {isDryLaundry ? 'Start Dry Laundry' : 'Start Wash'}
                 </button>
                 <button
                   onClick={() => finishWash(order._id)}
                   className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-100"
                 >
-                  Finish Wash
+                  {isDryLaundry ? 'Finish Dry Laundry' : 'Finish Wash'}
                 </button>
               </div>
             </div>

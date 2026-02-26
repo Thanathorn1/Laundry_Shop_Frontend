@@ -5,12 +5,16 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiFetch } from "@/lib/api";
+import { calculateOrderPriceSummary, getWashUnitPrice } from "@/lib/pricing";
 
 type CreateOrderPayload = {
   productName: string;
   description?: string;
   images?: string[];
   contactPhone?: string;
+  laundryType?: 'wash' | 'dry';
+  weightCategory?: 's' | 'm' | 'l';
+  serviceTimeMinutes?: number;
   pickupLatitude: number;
   pickupLongitude: number;
   pickupAddress?: string;
@@ -103,6 +107,9 @@ export default function CreateOrderPage() {
 
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
+  const [laundryType, setLaundryType] = useState<'wash' | 'dry'>('wash');
+  const [weightCategory, setWeightCategory] = useState<'s' | 'm' | 'l'>('s');
+  const [serviceTimeMinutes, setServiceTimeMinutes] = useState(50);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -159,6 +166,53 @@ export default function CreateOrderPage() {
       ),
     [mustCompleteProfile, firstName, lastName, productName, contactPhone, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
   );
+
+  const estimatedPrice = useMemo(
+    () =>
+      calculateOrderPriceSummary({
+        laundryType,
+        weightCategory,
+        serviceTimeMinutes,
+        pickupType,
+      }),
+    [laundryType, weightCategory, serviceTimeMinutes, pickupType],
+  );
+
+  const unitPrice = laundryType === 'dry' ? 20 : getWashUnitPrice(weightCategory);
+
+  const minScheduleDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const scheduleTimeOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = [];
+    if (!pickupDate) return options;
+
+    const now = new Date();
+    const nowDate = now.toISOString().slice(0, 10);
+    const base = pickupDate === nowDate ? new Date(now.getTime() + 60 * 60 * 1000) : new Date(`${pickupDate}T00:00:00`);
+    base.setMinutes(Math.ceil(base.getMinutes() / 15) * 15, 0, 0);
+
+    const end = new Date(`${pickupDate}T23:59:59`);
+    for (let cursor = new Date(base); cursor <= end; cursor = new Date(cursor.getTime() + 15 * 60 * 1000)) {
+      const hh = String(cursor.getHours()).padStart(2, '0');
+      const mm = String(cursor.getMinutes()).padStart(2, '0');
+      const value = `${hh}:${mm}`;
+      const label = cursor.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      options.push({ value, label });
+    }
+
+    return options;
+  }, [pickupDate]);
+
+  useEffect(() => {
+    if (pickupType !== 'schedule') return;
+    if (!pickupDate) {
+      setPickupDate(minScheduleDate);
+      return;
+    }
+    if (!pickupTime || !scheduleTimeOptions.some((item) => item.value === pickupTime)) {
+      setPickupTime(scheduleTimeOptions[0]?.value || '');
+    }
+  }, [pickupType, pickupDate, pickupTime, scheduleTimeOptions, minScheduleDate]);
 
   useEffect(() => {
     const loadSavedAddresses = async () => {
@@ -332,6 +386,15 @@ export default function CreateOrderPage() {
       return;
     }
 
+    if (pickupType === 'schedule') {
+      const scheduledAt = new Date(`${pickupDate}T${pickupTime}:00`);
+      const oneHourLater = new Date(Date.now() + 60 * 60 * 1000);
+      if (scheduledAt.getTime() < oneHourLater.getTime()) {
+        setError("Scheduled pickup must be at least 1 hour from now");
+        return;
+      }
+    }
+
     const pickupAt =
       pickupType === 'schedule'
         ? new Date(`${pickupDate}T${pickupTime}:00`).toISOString()
@@ -342,6 +405,9 @@ export default function CreateOrderPage() {
       description: description.trim() || undefined,
       images: basketPhotos.length ? await filesToBase64(basketPhotos) : undefined,
       contactPhone: contactPhone.trim() || undefined,
+      laundryType,
+      weightCategory,
+      serviceTimeMinutes,
       pickupLatitude: pickupLat,
       pickupLongitude: pickupLng,
       pickupAddress: pickupAddress.trim() || undefined,
@@ -393,6 +459,9 @@ export default function CreateOrderPage() {
       setSuccess("Order created successfully");
       setProductName("");
       setDescription("");
+      setLaundryType('wash');
+      setWeightCategory('s');
+      setServiceTimeMinutes(50);
       setBasketPhotos([]);
       setSavePickup(false);
       router.push('/customer');
@@ -556,6 +625,47 @@ export default function CreateOrderPage() {
             />
           </div>
 
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-bold">Laundry Type</label>
+              <select
+                value={laundryType}
+                onChange={(event) => setLaundryType(event.target.value as 'wash' | 'dry')}
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+              >
+                <option value="wash">Wash Laundry</option>
+                <option value="dry">Dry Laundry</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-bold">Weight (kg)</label>
+              <select
+                value={weightCategory}
+                onChange={(event) => setWeightCategory(event.target.value as 's' | 'm' | 'l')}
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+              >
+                <option value="s">S (0 - 4 kg)</option>
+                <option value="m">M (6 - 10 kg)</option>
+                <option value="l">L (10 - 20 kg)</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-bold">Drying Time (อบผ้า กี่นาที)</label>
+              <select
+                value={String(serviceTimeMinutes)}
+                onChange={(event) => setServiceTimeMinutes(Number(event.target.value))}
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+              >
+                <option value="50">50</option>
+                <option value="75">75</option>
+                <option value="100">100</option>
+                <option value="125">125</option>
+                <option value="150">150</option>
+              </select>
+              <p className="mt-1 text-xs font-semibold text-blue-700/70">เลือกเวลาอบผ้าเป็นนาที (เช่น 50, 75, 100 นาที)</p>
+            </div>
+          </div>
+
           <div>
             <label className="mb-1 block text-sm font-bold">Basket Photos</label>
             <input
@@ -662,16 +772,27 @@ export default function CreateOrderPage() {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <input
                   type="date"
+                  min={minScheduleDate}
                   value={pickupDate}
                   onChange={(event) => setPickupDate(event.target.value)}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none focus:border-zinc-500"
                 />
-                <input
-                  type="time"
+                <select
                   value={pickupTime}
                   onChange={(event) => setPickupTime(event.target.value)}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-                />
+                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none focus:border-zinc-500"
+                >
+                  {scheduleTimeOptions.length === 0 ? (
+                    <option value="">No available time</option>
+                  ) : (
+                    scheduleTimeOptions.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="text-xs font-semibold text-blue-700/70">Schedule pickup ฟรี และต้องมากกว่าเวลาปัจจุบันอย่างน้อย 1 ชั่วโมง</p>
               </div>
             )}
           </div>
@@ -694,6 +815,32 @@ export default function CreateOrderPage() {
                 placeholder="Label e.g. Home / Condo / Office"
               />
             )}
+          </div>
+
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Auto Price</p>
+            <p className="mt-1 text-lg font-black text-emerald-800">฿{estimatedPrice.totalPrice.toLocaleString()}</p>
+            <p className="mt-1 text-xs font-semibold text-emerald-700/90">
+              สูตร: ({serviceTimeMinutes} ÷ 50) × {unitPrice} บาท
+            </p>
+            <div className="mt-3 border-t border-emerald-200 pt-2 text-xs font-semibold text-emerald-800 space-y-1">
+              <div className="flex items-center justify-between">
+                <span>ค่าซัก/อบ</span>
+                <span>฿{estimatedPrice.baseLaundryPrice.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>ค่าจัดส่ง</span>
+                <span>฿{estimatedPrice.deliveryFee.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>{pickupType === 'now' ? 'ค่าบริการ Pickup Now' : 'ค่าบริการ Pickup Schedule'}</span>
+                <span>฿{estimatedPrice.pickupServiceFee.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-emerald-200 pt-1 font-black">
+                <span>รวมสุทธิ</span>
+                <span>฿{estimatedPrice.totalPrice.toLocaleString()}</span>
+              </div>
+            </div>
           </div>
 
           <button

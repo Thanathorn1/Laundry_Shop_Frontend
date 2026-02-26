@@ -51,6 +51,10 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
             <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">🗺️</span>
             Shop Map
           </Link>
+          <Link href="/admin/pin-shop?from=employee" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+            <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">📍</span>
+            Pin Shop
+          </Link>
 
           {isAdminSession && (
             <>
@@ -74,10 +78,6 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
               <Link href="/admin/employees?from=employee" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
                 <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🧑‍🔧</span>
                 Employee List
-              </Link>
-              <Link href="/admin/pin-shop?from=employee" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
-                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">📍</span>
-                Pin Shop
               </Link>
             </>
           )}

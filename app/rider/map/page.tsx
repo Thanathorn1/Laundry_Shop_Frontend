@@ -11,22 +11,27 @@ const RiderMapClient = dynamic(
 
 export default function Page() {
   const [orders, setOrders] = useState([])
+  const [shops, setShops] = useState([])
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchOrders = async () => {
+    const fetchData = async () => {
       try {
-        const data = await apiFetch('/rider/available')
-        setOrders(data)
+        const [ordersData, shopsData] = await Promise.all([
+          apiFetch('/rider/available'),
+          apiFetch('/map/shops'),
+        ])
+        setOrders(Array.isArray(ordersData) ? ordersData : [])
+        setShops(Array.isArray(shopsData) ? shopsData : [])
       } catch (err) {
-        console.error("Failed to fetch orders:", err)
+        console.error("Failed to fetch rider map data:", err)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchOrders()
+    fetchData()
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -47,7 +52,7 @@ export default function Page() {
       alert('Order accepted successfully!');
       // Refresh orders
       const data = await apiFetch('/rider/available')
-      setOrders(data)
+      setOrders(Array.isArray(data) ? data : [])
     } catch (err: any) {
       alert(err.message);
     }
@@ -68,6 +73,7 @@ export default function Page() {
     <div className="h-screen w-full">
       <RiderMapClient
         orders={orders}
+        shops={shops}
         userLocation={userLocation}
         onAcceptOrder={handleAcceptOrder}
       />

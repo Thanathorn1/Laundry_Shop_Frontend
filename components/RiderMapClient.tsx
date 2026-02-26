@@ -49,13 +49,27 @@ interface Order {
     distance?: number;
 }
 
+interface Shop {
+    _id: string;
+    shopName?: string;
+    label?: string;
+    phoneNumber?: string;
+    totalWashingMachines?: number;
+    machineAvailable?: number;
+    location?: {
+        type: string;
+        coordinates: [number, number];
+    };
+}
+
 interface RiderMapClientProps {
     orders: Order[];
+    shops?: Shop[];
     userLocation?: { lat: number; lon: number } | null;
     onAcceptOrder?: (orderId: string) => void;
 }
 
-export default function RiderMapClient({ orders, userLocation, onAcceptOrder }: RiderMapClientProps) {
+export default function RiderMapClient({ orders, shops = [], userLocation, onAcceptOrder }: RiderMapClientProps) {
     const [mapView, setMapView] = useState<{ center: [number, number], zoom: number }>({
         center: [13.7563, 100.5018], // Default Bangkok
         zoom: 13
@@ -90,6 +104,21 @@ export default function RiderMapClient({ orders, userLocation, onAcceptOrder }: 
             `,
             iconSize: [24, 24],
             iconAnchor: [12, 12],
+        });
+    }, []);
+
+    const shopIcon = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        const L = require('leaflet');
+        return L.divIcon({
+            className: 'custom-shop-icon',
+            html: `
+                <div class="relative flex items-center justify-center">
+                    <div class="h-4 w-4 rounded-full bg-rose-600 border-2 border-white shadow-lg ring-2 ring-rose-600/20"></div>
+                </div>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
         });
     }, []);
 
@@ -154,6 +183,33 @@ export default function RiderMapClient({ orders, userLocation, onAcceptOrder }: 
                                             Accept Order
                                         </button>
                                     )}
+                                </div>
+                            </Popup>
+                        </Marker>
+                    );
+                })}
+
+                {shops.map((shop) => {
+                    const lat = shop.location?.coordinates?.[1];
+                    const lon = shop.location?.coordinates?.[0];
+                    if (!lat || !lon || !shopIcon) return null;
+
+                    return (
+                        <Marker
+                            key={`shop-${shop._id}`}
+                            position={[lat, lon]}
+                            icon={shopIcon}
+                        >
+                            <Popup>
+                                <div className="p-3 w-48 font-sans">
+                                    <p className="font-black text-rose-600 text-xs uppercase tracking-widest mb-1">Shop</p>
+                                    <p className="font-black text-blue-900 text-sm mb-2">{shop.shopName || shop.label || 'Laundry Shop'}</p>
+                                    {shop.phoneNumber ? (
+                                        <p className="text-[10px] text-slate-500 font-bold mb-2">☎ {shop.phoneNumber}</p>
+                                    ) : null}
+                                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+                                        {Number(shop.machineAvailable) || 0}/{Number(shop.totalWashingMachines) || 10} Available
+                                    </span>
                                 </div>
                             </Popup>
                         </Marker>

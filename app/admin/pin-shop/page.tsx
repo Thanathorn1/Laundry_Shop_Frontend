@@ -87,6 +87,16 @@ type Shop = {
   label?: string;
   phoneNumber?: string;
   photoImage?: string;
+  totalWashingMachines?: number;
+  machineSizeConfig?: {
+    s?: number;
+    m?: number;
+    l?: number;
+  };
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  machineInUse?: number;
+  machineAvailable?: number;
+  ownerId?: string;
   createdAt?: string;
   location?: {
     type: string;
@@ -115,11 +125,16 @@ export default function AdminPinShopPage() {
   const [backLabel, setBackLabel] = useState("← Back to Admin");
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<"alpha-asc" | "alpha-desc" | "newest" | "oldest">("alpha-asc");
+  const [isAdminSession, setIsAdminSession] = useState(false);
 
   const [shopName, setShopName] = useState("");
   const [label, setLabel] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [photoImage, setPhotoImage] = useState("");
+  const [totalWashingMachines, setTotalWashingMachines] = useState("10");
+  const [machineS, setMachineS] = useState("4");
+  const [machineM, setMachineM] = useState("3");
+  const [machineL, setMachineL] = useState("3");
   const [latitude, setLatitude] = useState("13.7563");
   const [longitude, setLongitude] = useState("100.5018");
 
@@ -128,6 +143,10 @@ export default function AdminPinShopPage() {
   const [editLabel, setEditLabel] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editPhoto, setEditPhoto] = useState("");
+  const [editTotalWashingMachines, setEditTotalWashingMachines] = useState("10");
+  const [editMachineS, setEditMachineS] = useState("4");
+  const [editMachineM, setEditMachineM] = useState("3");
+  const [editMachineL, setEditMachineL] = useState("3");
   const [editLat, setEditLat] = useState("");
   const [editLng, setEditLng] = useState("");
 
@@ -239,6 +258,10 @@ export default function AdminPinShopPage() {
         setEditLabel(shop.label || "");
         setEditPhone(shop.phoneNumber || "");
         setEditPhoto(shop.photoImage || "");
+        setEditTotalWashingMachines(String(shop.totalWashingMachines || 10));
+        setEditMachineS(String(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10));
+        setEditMachineM(String(shop.machineSizeConfig?.m ?? 0));
+        setEditMachineL(String(shop.machineSizeConfig?.l ?? 0));
         setEditLng(String(shopLng));
         setEditLat(String(shopLat));
       });
@@ -354,6 +377,22 @@ export default function AdminPinShopPage() {
     editMapRef.current.setView([lat, lng], 15);
   }, [editLat, editLng]);
 
+  useEffect(() => {
+    const total =
+      Math.max(0, Math.floor(Number(machineS) || 0)) +
+      Math.max(0, Math.floor(Number(machineM) || 0)) +
+      Math.max(0, Math.floor(Number(machineL) || 0));
+    setTotalWashingMachines(String(total));
+  }, [machineS, machineM, machineL]);
+
+  useEffect(() => {
+    const total =
+      Math.max(0, Math.floor(Number(editMachineS) || 0)) +
+      Math.max(0, Math.floor(Number(editMachineM) || 0)) +
+      Math.max(0, Math.floor(Number(editMachineL) || 0));
+    setEditTotalWashingMachines(String(total));
+  }, [editMachineS, editMachineM, editMachineL]);
+
   const loadShops = async () => {
     try {
       setLoading(true);
@@ -378,10 +417,27 @@ export default function AdminPinShopPage() {
     }
 
     const authRole = localStorage.getItem("auth_role");
-    if (authRole !== "admin") {
+    const token = localStorage.getItem("access_token");
+    const tokenRole = (() => {
+      try {
+        if (!token) return null;
+        const payloadBase64 = token.split('.')[1];
+        if (!payloadBase64) return null;
+        const normalized = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+        const parsed = JSON.parse(atob(padded)) as { role?: string };
+        return parsed.role || null;
+      } catch {
+        return null;
+      }
+    })();
+    const effectiveRole = authRole || tokenRole;
+
+    if (effectiveRole !== "admin" && effectiveRole !== "employee") {
       router.replace("/");
       return;
     }
+    setIsAdminSession(effectiveRole === "admin");
     loadShops();
   }, [router]);
 
@@ -422,6 +478,15 @@ export default function AdminPinShopPage() {
       return;
     }
 
+    const machineSCount = Math.max(0, Math.floor(Number(machineS) || 0));
+    const machineMCount = Math.max(0, Math.floor(Number(machineM) || 0));
+    const machineLCount = Math.max(0, Math.floor(Number(machineL) || 0));
+    const machineCount = machineSCount + machineMCount + machineLCount;
+    if (machineCount < 1) {
+      setError("At least 1 machine is required (S/M/L)");
+      return;
+    }
+
     try {
       setSaving(true);
       await apiFetch("/map/shops", {
@@ -431,6 +496,12 @@ export default function AdminPinShopPage() {
           label: label.trim() || shopName.trim(),
           phoneNumber: phoneNumber.trim(),
           photoImage: photoImage.trim(),
+          totalWashingMachines: machineCount,
+          machineSizeConfig: {
+            s: machineSCount,
+            m: machineMCount,
+            l: machineLCount,
+          },
           location: { lat, lng },
         }),
       });
@@ -439,6 +510,10 @@ export default function AdminPinShopPage() {
       setLabel("");
       setPhoneNumber("");
       setPhotoImage("");
+      setTotalWashingMachines("10");
+      setMachineS("4");
+      setMachineM("3");
+      setMachineL("3");
       await loadShops();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add shop");
@@ -453,6 +528,10 @@ export default function AdminPinShopPage() {
     setEditLabel(shop.label || "");
     setEditPhone(shop.phoneNumber || "");
     setEditPhoto(shop.photoImage || "");
+    setEditTotalWashingMachines(String(shop.totalWashingMachines || 10));
+    setEditMachineS(String(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10));
+    setEditMachineM(String(shop.machineSizeConfig?.m ?? 0));
+    setEditMachineL(String(shop.machineSizeConfig?.l ?? 0));
     const coords = shop.location?.coordinates;
     setEditLng(Array.isArray(coords) && coords.length >= 2 ? String(coords[0]) : "");
     setEditLat(Array.isArray(coords) && coords.length >= 2 ? String(coords[1]) : "");
@@ -466,6 +545,15 @@ export default function AdminPinShopPage() {
       return;
     }
 
+    const machineSCount = Math.max(0, Math.floor(Number(editMachineS) || 0));
+    const machineMCount = Math.max(0, Math.floor(Number(editMachineM) || 0));
+    const machineLCount = Math.max(0, Math.floor(Number(editMachineL) || 0));
+    const machineCount = machineSCount + machineMCount + machineLCount;
+    if (machineCount < 1) {
+      setError("At least 1 machine is required (S/M/L)");
+      return;
+    }
+
     try {
       await apiFetch(`/map/shops/${shopId}`, {
         method: "PUT",
@@ -474,6 +562,12 @@ export default function AdminPinShopPage() {
           label: editLabel.trim(),
           phoneNumber: editPhone.trim(),
           photoImage: editPhoto.trim(),
+          totalWashingMachines: machineCount,
+          machineSizeConfig: {
+            s: machineSCount,
+            m: machineMCount,
+            l: machineLCount,
+          },
           location: { lat, lng },
         }),
       });
@@ -482,6 +576,16 @@ export default function AdminPinShopPage() {
       await loadShops();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update shop");
+    }
+  };
+
+  const approveShop = async (shopId: string) => {
+    try {
+      await apiFetch(`/map/shops/${shopId}/approve`, { method: 'PATCH' });
+      setMessage('Shop approved');
+      await loadShops();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to approve shop');
     }
   };
 
@@ -540,6 +644,10 @@ export default function AdminPinShopPage() {
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
             <input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone Number" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
             <input value={photoImage} onChange={(e) => setPhotoImage(e.target.value)} placeholder="Photo URL/Base64" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            <input value={machineS} onChange={(e) => setMachineS(e.target.value)} placeholder="Machine S" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            <input value={machineM} onChange={(e) => setMachineM(e.target.value)} placeholder="Machine M" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            <input value={machineL} onChange={(e) => setMachineL(e.target.value)} placeholder="Machine L" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            <input value={totalWashingMachines} readOnly placeholder="Total Washing Machines" className="rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
             <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="Latitude" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
             <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="Longitude" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
           </div>
@@ -552,6 +660,9 @@ export default function AdminPinShopPage() {
           <button onClick={createShop} disabled={saving} className="mt-3 rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving..." : "Add Shop"}
           </button>
+          {!isAdminSession && (
+            <p className="mt-2 text-xs font-semibold text-amber-700">Employee added shop will be pending until admin approves.</p>
+          )}
           {message && <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{message}</p>}
           {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
         </div>
@@ -600,6 +711,10 @@ export default function AdminPinShopPage() {
                         <input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
                         <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Phone" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
                         <input value={editPhoto} onChange={(e) => setEditPhoto(e.target.value)} placeholder="Photo URL/Base64" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        <input value={editMachineS} onChange={(e) => setEditMachineS(e.target.value)} placeholder="Machine S" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        <input value={editMachineM} onChange={(e) => setEditMachineM(e.target.value)} placeholder="Machine M" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        <input value={editMachineL} onChange={(e) => setEditMachineL(e.target.value)} placeholder="Machine L" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        <input value={editTotalWashingMachines} readOnly placeholder="Total Washing Machines" className="rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
                         <input type="file" accept="image/*" onChange={(e) => onEditPhotoFileChange(e.target.files?.[0] ?? null)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm md:col-span-2" />
                         {editPhoto ? (
                           <img src={toImageSrc(editPhoto)} alt="Edit shop preview" className="h-32 w-48 rounded-xl border border-slate-200 object-cover md:col-span-2" onError={(e) => {
@@ -618,6 +733,9 @@ export default function AdminPinShopPage() {
                         <div className="min-w-0">
                           <p className="font-black text-blue-900">{shop.shopName || shop.label || "Laundry Shop"}</p>
                           <p className="text-xs font-semibold text-blue-600">Phone: {shop.phoneNumber || "-"}</p>
+                          <p className="text-xs font-semibold text-indigo-600">Machines: {shop.machineAvailable ?? 0} available / {shop.totalWashingMachines ?? 10} total</p>
+                          <p className="text-xs font-semibold text-indigo-500">S/M/L: {shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10}/{shop.machineSizeConfig?.m ?? 0}/{shop.machineSizeConfig?.l ?? 0}</p>
+                          <p className="text-xs font-semibold text-amber-600">Status: {shop.approvalStatus || 'approved'}</p>
                           <p className="text-xs font-semibold text-blue-500">{lat != null && lng != null ? `${lat}, ${lng}` : "-"}</p>
                           {shop.photoImage ? (
                             <img src={toImageSrc(shop.photoImage)} alt={shop.shopName || shop.label || "Shop"} className="mt-2 h-20 w-32 rounded-lg border border-slate-200 object-cover" onError={(e) => {
@@ -626,8 +744,11 @@ export default function AdminPinShopPage() {
                           ) : null}
                         </div>
                         <div className="flex gap-2">
+                          {isAdminSession && shop.approvalStatus === 'pending' && (
+                            <button onClick={() => approveShop(shop._id)} className="rounded-xl border border-emerald-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-50">Approve</button>
+                          )}
                           <button onClick={() => startEdit(shop)} className="rounded-xl border border-blue-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-blue-700 hover:bg-blue-50">Edit</button>
-                          <button onClick={() => deleteShop(shop._id)} className="rounded-xl border border-rose-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-rose-600 hover:bg-rose-50">Delete</button>
+                          {isAdminSession && <button onClick={() => deleteShop(shop._id)} className="rounded-xl border border-rose-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-rose-600 hover:bg-rose-50">Delete</button>}
                         </div>
                       </div>
                     )}

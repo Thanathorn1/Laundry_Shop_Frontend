@@ -8,6 +8,7 @@ import { io } from 'socket.io-client';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
 import { fetchRoadRoute } from '@/lib/road-route';
+import { calculateOrderPriceSummary, getWashUnitPrice, getWeightCategoryLabel } from '@/lib/pricing';
 
 const MapContainer = dynamic(
     () => import('react-leaflet').then((mod) => mod.MapContainer),
@@ -147,6 +148,9 @@ interface Order {
     pickupType: 'now' | 'schedule';
     pickupAt: string | null;
     totalPrice: number;
+    laundryType?: 'wash' | 'dry';
+    weightCategory?: 's' | 'm' | 'l' | '0-4' | '6-10' | '10-20';
+    serviceTimeMinutes?: number;
     createdAt: string;
     deliveryAddress?: string | null;
     riderId?: string | null;
@@ -520,6 +524,15 @@ export default function CustomerPage() {
             return;
         }
 
+        if (editPickupType === 'schedule') {
+            const scheduledAt = new Date(`${editPickupDate}T${editPickupTime}:00`);
+            const oneHourLater = new Date(Date.now() + 60 * 60 * 1000);
+            if (scheduledAt.getTime() < oneHourLater.getTime()) {
+                alert('Scheduled pickup must be at least 1 hour from now');
+                return;
+            }
+        }
+
         const pickupAt =
             editPickupType === 'schedule'
                 ? new Date(`${editPickupDate}T${editPickupTime}:00`).toISOString()
@@ -580,6 +593,38 @@ export default function CustomerPage() {
     };
 
     const activeOrders = orders.filter(o => !['completed', 'cancelled'].includes(o.status));
+    const minEditScheduleDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+    const editScheduleTimeOptions = useMemo(() => {
+        const options: Array<{ value: string; label: string }> = [];
+        if (!editPickupDate) return options;
+
+        const now = new Date();
+        const nowDate = now.toISOString().slice(0, 10);
+        const base = editPickupDate === nowDate ? new Date(now.getTime() + 60 * 60 * 1000) : new Date(`${editPickupDate}T00:00:00`);
+        base.setMinutes(Math.ceil(base.getMinutes() / 15) * 15, 0, 0);
+        const end = new Date(`${editPickupDate}T23:59:59`);
+
+        for (let cursor = new Date(base); cursor <= end; cursor = new Date(cursor.getTime() + 15 * 60 * 1000)) {
+            const hh = String(cursor.getHours()).padStart(2, '0');
+            const mm = String(cursor.getMinutes()).padStart(2, '0');
+            const value = `${hh}:${mm}`;
+            const label = cursor.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            options.push({ value, label });
+        }
+
+        return options;
+    }, [editPickupDate]);
+
+    useEffect(() => {
+        if (editPickupType !== 'schedule') return;
+        if (!editPickupDate) {
+            setEditPickupDate(minEditScheduleDate);
+            return;
+        }
+        if (!editPickupTime || !editScheduleTimeOptions.some((item) => item.value === editPickupTime)) {
+            setEditPickupTime(editScheduleTimeOptions[0]?.value || '');
+        }
+    }, [editPickupType, editPickupDate, editPickupTime, editScheduleTimeOptions, minEditScheduleDate]);
     const trackedOrder = useMemo(() => {
         if (!activeOrders.length) return null;
         return [...activeOrders].sort((a, b) =>
@@ -912,16 +957,27 @@ export default function CustomerPage() {
                                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                         <input
                                             type="date"
+                                            min={minEditScheduleDate}
                                             value={editPickupDate}
-                                            onChange={event => setEditPickupDate(event.target.value)}
-                                            className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+                                            onChange={(event) => setEditPickupDate(event.target.value)}
+                                            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none focus:border-zinc-500"
                                         />
-                                        <input
-                                            type="time"
+                                        <select
                                             value={editPickupTime}
-                                            onChange={event => setEditPickupTime(event.target.value)}
-                                            className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-                                        />
+                                            onChange={(event) => setEditPickupTime(event.target.value)}
+                                            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 outline-none focus:border-zinc-500"
+                                        >
+                                            {editScheduleTimeOptions.length === 0 ? (
+                                                <option value="">No available time</option>
+                                            ) : (
+                                                editScheduleTimeOptions.map((item) => (
+                                                    <option key={item.value} value={item.value}>
+                                                        {item.label}
+                                                    </option>
+                                                ))
+                                            )}
+                                        </select>
+                                        <p className="text-xs font-semibold text-blue-700/70">Schedule pickup ฟรี และต้องมากกว่าเวลาปัจจุบันอย่างน้อย 1 ชั่วโมง</p>
                                     </div>
                                 )}
                             </div>
@@ -1104,6 +1160,15 @@ export default function CustomerPage() {
                                 {activeOrders.map((order) => {
                                     const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
                                     const isPending = order.status === 'pending';
+                                    const priceSummary = calculateOrderPriceSummary({
+                                        laundryType: order.laundryType,
+                                        weightCategory: order.weightCategory,
+                                        serviceTimeMinutes: order.serviceTimeMinutes,
+                                        pickupType: order.pickupType,
+                                    });
+                                    const displayPrice = order.totalPrice > 0 ? order.totalPrice : priceSummary.totalPrice;
+                                    const displayServiceTime = typeof order.serviceTimeMinutes === 'number' ? order.serviceTimeMinutes : 50;
+                                    const unitPrice = order.laundryType === 'dry' ? 20 : getWashUnitPrice(order.weightCategory);
                                     return (
                                         <div key={order._id} className={`p-5 rounded-2xl border ${cfg.bg} transition-all hover:shadow-md`}>
                                             <div className="flex items-start justify-between mb-3">
@@ -1125,16 +1190,25 @@ export default function CustomerPage() {
                                                     <span className="font-bold">Pickup:</span> {order.pickupAddress}
                                                 </p>
                                             )}
+                                            <p className="text-xs text-blue-700/70 mb-1">
+                                                {order.laundryType === 'dry' ? 'Dry Laundry' : 'Wash Laundry'}
+                                                {order.weightCategory ? ` • ${getWeightCategoryLabel(order.weightCategory)}` : ''}
+                                                {` • ${displayServiceTime} min`}
+                                            </p>
                                             <div className="flex items-center justify-between mt-3">
                                                 <span className="text-xs font-bold text-blue-500">
                                                     {order.pickupType === 'schedule' && order.pickupAt
                                                         ? `Scheduled: ${new Date(order.pickupAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
                                                         : 'Pickup Now'}
                                                 </span>
-                                                {order.totalPrice > 0 && (
-                                                    <span className="text-sm font-black text-blue-900">฿{order.totalPrice.toLocaleString()}</span>
-                                                )}
+                                                <span className="text-sm font-black text-blue-900">฿{displayPrice.toLocaleString()}</span>
                                             </div>
+                                            <p className="mt-1 text-[11px] font-semibold text-blue-600/80">
+                                                ({displayServiceTime} ÷ 50) × {unitPrice} บาท
+                                            </p>
+                                            <p className="text-[11px] font-semibold text-blue-600/80">
+                                                + Delivery 50 {order.pickupType === 'now' ? '+ Pickup Now 20' : '+ Pickup Schedule 0'}
+                                            </p>
                                             {/* Edit / Delete — only for pending orders */}
                                             {isPending && (
                                                 <div className="flex gap-2 mt-4 pt-3 border-t border-amber-200">
