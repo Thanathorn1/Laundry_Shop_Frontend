@@ -45,9 +45,10 @@ export function calculateLaundryPrice(params: {
   serviceTimeMinutes?: number;
 }): number {
   const serviceTimeMinutes = normalizeServiceTimeMinutes(params.serviceTimeMinutes);
-  const isDryLaundry = params.laundryType === 'dry';
-  const unitPrice = isDryLaundry ? 20 : getWashUnitPrice(params.weightCategory);
-  const calculated = (serviceTimeMinutes / 50) * unitPrice;
+  const washUnitPrice = getWashUnitPrice(params.weightCategory);
+  const washPrice = params.laundryType === 'dry' ? 0 : (serviceTimeMinutes / 50) * washUnitPrice;
+  const dryPrice = (serviceTimeMinutes / 50) * 20;
+  const calculated = washPrice + dryPrice;
   return Math.round(calculated * 100) / 100;
 }
 
@@ -57,12 +58,18 @@ export function calculateOrderPriceSummary(params: {
   serviceTimeMinutes?: number;
   pickupType?: PickupType;
 }) {
-  const baseLaundryPrice = calculateLaundryPrice(params);
+  const serviceTimeMinutes = normalizeServiceTimeMinutes(params.serviceTimeMinutes);
+  const washUnitPrice = getWashUnitPrice(params.weightCategory);
+  const washPrice = params.laundryType === 'dry' ? 0 : Math.round(((serviceTimeMinutes / 50) * washUnitPrice) * 100) / 100;
+  const dryPrice = Math.round(((serviceTimeMinutes / 50) * 20) * 100) / 100;
+  const baseLaundryPrice = Math.round((washPrice + dryPrice) * 100) / 100;
   const deliveryFee = DELIVERY_FEE;
   const pickupServiceFee = params.pickupType === 'now' ? PICKUP_NOW_EXTRA_FEE : 0;
   const totalPrice = Math.round((baseLaundryPrice + deliveryFee + pickupServiceFee) * 100) / 100;
 
   return {
+    washPrice,
+    dryPrice,
     baseLaundryPrice,
     deliveryFee,
     pickupServiceFee,

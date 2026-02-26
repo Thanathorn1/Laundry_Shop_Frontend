@@ -219,6 +219,15 @@ export default function EmployeeShopPage() {
     }
   };
 
+  const finishDry = async (orderId: string) => {
+    try {
+      await apiFetch(`/employee/orders/${orderId}/finish-dry`, { method: 'PATCH' });
+      fetchOrders();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to finish dry');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -275,15 +284,37 @@ export default function EmployeeShopPage() {
         {orders.map((order) => {
           const customerName = `${order.customerId?.firstName || ''} ${order.customerId?.lastName || ''}`.trim() || 'Customer';
           const employeeName = `${order.employeeId?.firstName || ''} ${order.employeeId?.lastName || ''}`.trim() || order.employeeId?.email || '-';
-          const isDryLaundry = order.laundryType === 'dry';
+          const isDryOnlyLaundry = order.laundryType === 'dry';
+          const canStartWash = !isDryOnlyLaundry && order.status === 'at_shop';
+          const canFinishWash = !isDryOnlyLaundry && order.status === 'washing';
+          const canStartDry = isDryOnlyLaundry && order.status === 'at_shop';
+          const canFinishDry = order.status === 'drying';
+          const isLaundryDone = order.status === 'laundry_done';
+          const statusLabel = order.status;
+          const stageLabel = (() => {
+            if (isLaundryDone) return isDryOnlyLaundry ? 'Stage: อบผ้าเสร็จแล้ว' : 'Stage: ซัก+อบผ้าเสร็จแล้ว';
+            if (order.status === 'washing') return 'Stage: กำลังซัก';
+            if (order.status === 'drying') return 'Stage: กำลังอบผ้า';
+            if (order.status === 'at_shop') return isDryOnlyLaundry ? 'Stage: รอเริ่มอบผ้า' : 'Stage: รอเริ่มซัก';
+            return isDryOnlyLaundry ? 'Stage: เตรียมอบผ้า' : 'Stage: เตรียมซัก';
+          })();
+          const dryStageLabel = (() => {
+            if (isLaundryDone) return 'Dry Stage (อบผ้า): เสร็จแล้ว';
+            if (order.status === 'drying') return 'Dry Stage (อบผ้า): กำลังอบผ้า';
+            if (order.status === 'washing') return 'Dry Stage (อบผ้า): รอคิวหลังซัก';
+            if (order.status === 'at_shop') return 'Dry Stage (อบผ้า): รอเริ่ม';
+            return 'Dry Stage (อบผ้า): เตรียมงาน';
+          })();
           const displayServiceTime = typeof order.serviceTimeMinutes === 'number' ? order.serviceTimeMinutes : 50;
-          const unitPrice = isDryLaundry ? 20 : getWashUnitPrice(order.weightCategory);
+          const unitPrice = isDryOnlyLaundry ? 20 : getWashUnitPrice(order.weightCategory);
           const priceSummary = calculateOrderPriceSummary({
             laundryType: order.laundryType,
             weightCategory: order.weightCategory,
             serviceTimeMinutes: order.serviceTimeMinutes,
             pickupType: order.pickupType,
           });
+          const washPrice = priceSummary.washPrice;
+          const dryPrice = priceSummary.dryPrice;
           const displayPrice = typeof order.totalPrice === 'number' && order.totalPrice > 0 ? order.totalPrice : priceSummary.totalPrice;
 
           return (
@@ -294,12 +325,15 @@ export default function EmployeeShopPage() {
                   <p className="text-xs text-blue-600 mt-1">Customer: {customerName}</p>
                   <p className="text-xs text-blue-600">Employee: {employeeName}</p>
                   <p className="text-xs text-blue-600">
-                    Type: {isDryLaundry ? 'Dry Laundry' : 'Wash Laundry'}
+                    Type: {isDryOnlyLaundry ? 'Dry Only Laundry (อบผ้า)' : 'Wash + Dry Laundry'}
                     {order.weightCategory ? ` • Weight: ${getWeightCategoryLabel(order.weightCategory)}` : ''}
                     {typeof order.serviceTimeMinutes === 'number' ? ` • Drying: ${order.serviceTimeMinutes} min` : ''}
                   </p>
+                  <p className="text-xs font-bold text-purple-700">Dry Step: อบผ้า</p>
+                  <p className="text-xs font-bold text-indigo-700">{stageLabel}</p>
+                  <p className="text-xs font-bold text-purple-700">{dryStageLabel}</p>
                 </div>
-                <span className="rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700">{order.status}</span>
+                <span className="rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700">{statusLabel}</span>
               </div>
 
               <div className="mt-4 grid gap-2 sm:grid-cols-2 text-sm">
@@ -308,7 +342,9 @@ export default function EmployeeShopPage() {
               </div>
               <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
                 <p className="text-sm font-black text-emerald-800">Price: ฿{displayPrice.toLocaleString()}</p>
-                <p className="text-[11px] font-semibold text-emerald-700/90">สูตร: ({displayServiceTime} ÷ 50) × {unitPrice} บาท</p>
+                <p className="text-[11px] font-semibold text-emerald-700/90">สูตรซัก: {isDryOnlyLaundry ? '0 บาท (Dry only)' : `(${displayServiceTime} ÷ 50) × ${unitPrice} บาท`}</p>
+                <p className="text-[11px] font-semibold text-emerald-700/90">สูตรอบผ้า: ({displayServiceTime} ÷ 50) × 20 บาท</p>
+                <p className="text-[11px] font-semibold text-emerald-700/90">รวมค่าซัก/อบ: ฿{(washPrice + dryPrice).toLocaleString()}</p>
                 <p className="text-[11px] font-semibold text-emerald-700/90">+ Delivery 50 {order.pickupType === 'now' ? '+ Pickup Now 20' : '+ Pickup Schedule 0'}</p>
               </div>
 
@@ -330,18 +366,43 @@ export default function EmployeeShopPage() {
               )}
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <button
-                  onClick={() => startWash(order._id)}
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-700 hover:bg-amber-100"
-                >
-                  {isDryLaundry ? 'Start Dry Laundry' : 'Start Wash'}
-                </button>
-                <button
-                  onClick={() => finishWash(order._id)}
-                  className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-100"
-                >
-                  {isDryLaundry ? 'Finish Dry Laundry' : 'Finish Wash'}
-                </button>
+                {canStartWash && (
+                  <button
+                    onClick={() => startWash(order._id)}
+                    className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-700 hover:bg-amber-100"
+                  >
+                    เริ่มซัก
+                  </button>
+                )}
+                {canFinishWash && (
+                  <button
+                    onClick={() => finishWash(order._id)}
+                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-100"
+                  >
+                    เสร็จซัก (ไปขั้นตอนอบผ้า)
+                  </button>
+                )}
+                {canStartDry && (
+                  <button
+                    onClick={() => startWash(order._id)}
+                    className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-purple-700 hover:bg-purple-100"
+                  >
+                    เริ่มอบผ้า
+                  </button>
+                )}
+                {canFinishDry && (
+                  <button
+                    onClick={() => finishDry(order._id)}
+                    className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-indigo-700 hover:bg-indigo-100"
+                  >
+                    เสร็จอบผ้า
+                  </button>
+                )}
+                {isLaundryDone && (
+                  <span className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
+                    {isDryOnlyLaundry ? 'อบผ้าเสร็จแล้ว' : 'ซัก+อบผ้าเสร็จแล้ว'}
+                  </span>
+                )}
               </div>
             </div>
           );

@@ -74,6 +74,7 @@ type LaundryStatus =
     | 'picked_up'
     | 'at_shop'
     | 'washing'
+    | 'drying'
     | 'laundry_done'
     | 'out_for_delivery'
     | 'completed'
@@ -376,6 +377,8 @@ export default function RiderDashboard() {
                 return 'at shop';
             case 'washing':
                 return 'washing';
+            case 'drying':
+                return 'drying';
             case 'laundry_done':
                 return 'ready (pickup at shop)';
             case 'out_for_delivery':
@@ -628,31 +631,33 @@ export default function RiderDashboard() {
             return;
         }
 
-        const updated = allOrders
-            .map((order) => {
-                const lat = order.pickupLocation?.coordinates?.[1];
-                const lon = order.pickupLocation?.coordinates?.[0];
+        const updated = allOrders.reduce<Order[]>((acc, order) => {
+            const lat = order.pickupLocation?.coordinates?.[1];
+            const lon = order.pickupLocation?.coordinates?.[0];
 
-                if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+            if (typeof lat !== 'number' || typeof lon !== 'number') {
+                return acc;
+            }
 
-                let distance = 0;
+            let distance = 0;
 
-                if (userLocation) {
-                    distance = calculateDistance(
-                        userLocation.lat,
-                        userLocation.lon,
-                        lat,
-                        lon
-                    );
-                }
+            if (userLocation) {
+                distance = calculateDistance(
+                    userLocation.lat,
+                    userLocation.lon,
+                    lat,
+                    lon
+                );
+            }
 
-                return {
-                    ...order,
-                    location: { lat, lon },
-                    distance: parseFloat(distance.toFixed(1))
-                };
-            })
-            .filter((o): o is Order => Boolean(o));
+            acc.push({
+                ...order,
+                location: { lat, lon },
+                distance: parseFloat(distance.toFixed(1)),
+            });
+
+            return acc;
+        }, []);
 
         const filtered = updated.filter(
             (order) =>
@@ -666,7 +671,6 @@ export default function RiderDashboard() {
     const acceptOrder = async (orderId: string) => {
         try {
             await apiFetch(`/rider/accept/${orderId}`, { method: 'PATCH' });
-            setShopsAlert(true);
             alert('Order accepted successfully!');
             await fetchData();
         } catch (err: unknown) {
@@ -680,6 +684,7 @@ export default function RiderDashboard() {
                 method: 'PATCH',
                 body: JSON.stringify({ status: 'picked_up' }),
             });
+            setShopsAlert(true);
             await fetchData();
         } catch (err: unknown) {
             alert(err instanceof Error ? err.message : String(err));

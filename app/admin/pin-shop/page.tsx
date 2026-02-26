@@ -640,16 +640,46 @@ export default function AdminPinShopPage() {
           <p className="mb-3 text-sm font-semibold text-blue-700/80">Click map to choose shop pin location.</p>
           <div ref={mapContainerRef} className="mb-4 h-80 w-full rounded-2xl border border-slate-200" />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <input value={shopName} onChange={(e) => setShopName(e.target.value)} placeholder="Shop Name" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone Number" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={photoImage} onChange={(e) => setPhotoImage(e.target.value)} placeholder="Photo URL/Base64" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={machineS} onChange={(e) => setMachineS(e.target.value)} placeholder="Machine S" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={machineM} onChange={(e) => setMachineM(e.target.value)} placeholder="Machine M" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={machineL} onChange={(e) => setMachineL(e.target.value)} placeholder="Machine L" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={totalWashingMachines} readOnly placeholder="Total Washing Machines" className="rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
-            <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="Latitude" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="Longitude" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Shop Name</span>
+              <input value={shopName} onChange={(e) => setShopName(e.target.value)} placeholder="Shop Name" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Label</span>
+              <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Phone Number</span>
+              <input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone Number" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Photo URL / Base64</span>
+              <input value={photoImage} onChange={(e) => setPhotoImage(e.target.value)} placeholder="Photo URL/Base64" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Machine S</span>
+              <input value={machineS} onChange={(e) => setMachineS(e.target.value)} placeholder="Machine S" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Machine M</span>
+              <input value={machineM} onChange={(e) => setMachineM(e.target.value)} placeholder="Machine M" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Machine L</span>
+              <input value={machineL} onChange={(e) => setMachineL(e.target.value)} placeholder="Machine L" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Total Washing Machines</span>
+              <input value={totalWashingMachines} readOnly placeholder="Total Washing Machines" className="w-full rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Latitude</span>
+              <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="Latitude" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Longitude</span>
+              <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="Longitude" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
           </div>
           <input type="file" accept="image/*" onChange={(e) => onPhotoFileChange(e.target.files?.[0] ?? null)} className="mt-3 w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
           {photoImage ? (
@@ -707,22 +737,52 @@ export default function AdminPinShopPage() {
                           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-blue-500">Edit location on map</p>
                           <div ref={editMapContainerRef} className="h-56 w-full rounded-xl border border-slate-200" />
                         </div>
-                        <input value={editShopName} onChange={(e) => setEditShopName(e.target.value)} placeholder="Shop Name" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Phone" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editPhoto} onChange={(e) => setEditPhoto(e.target.value)} placeholder="Photo URL/Base64" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editMachineS} onChange={(e) => setEditMachineS(e.target.value)} placeholder="Machine S" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editMachineM} onChange={(e) => setEditMachineM(e.target.value)} placeholder="Machine M" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editMachineL} onChange={(e) => setEditMachineL(e.target.value)} placeholder="Machine L" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editTotalWashingMachines} readOnly placeholder="Total Washing Machines" className="rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Shop Name</span>
+                          <input value={editShopName} onChange={(e) => setEditShopName(e.target.value)} placeholder="Shop Name" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Label</span>
+                          <input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Phone</span>
+                          <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Phone" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Photo URL / Base64</span>
+                          <input value={editPhoto} onChange={(e) => setEditPhoto(e.target.value)} placeholder="Photo URL/Base64" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Machine S</span>
+                          <input value={editMachineS} onChange={(e) => setEditMachineS(e.target.value)} placeholder="Machine S" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Machine M</span>
+                          <input value={editMachineM} onChange={(e) => setEditMachineM(e.target.value)} placeholder="Machine M" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Machine L</span>
+                          <input value={editMachineL} onChange={(e) => setEditMachineL(e.target.value)} placeholder="Machine L" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Total Washing Machines</span>
+                          <input value={editTotalWashingMachines} readOnly placeholder="Total Washing Machines" className="w-full rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
+                        </label>
                         <input type="file" accept="image/*" onChange={(e) => onEditPhotoFileChange(e.target.files?.[0] ?? null)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm md:col-span-2" />
                         {editPhoto ? (
                           <img src={toImageSrc(editPhoto)} alt="Edit shop preview" className="h-32 w-48 rounded-xl border border-slate-200 object-cover md:col-span-2" onError={(e) => {
                             e.currentTarget.style.display = "none";
                           }} />
                         ) : null}
-                        <input value={editLat} onChange={(e) => setEditLat(e.target.value)} placeholder="Latitude" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-                        <input value={editLng} onChange={(e) => setEditLng(e.target.value)} placeholder="Longitude" className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Latitude</span>
+                          <input value={editLat} onChange={(e) => setEditLat(e.target.value)} placeholder="Latitude" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Longitude</span>
+                          <input value={editLng} onChange={(e) => setEditLng(e.target.value)} placeholder="Longitude" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
                         <div className="md:col-span-2 flex gap-2 pt-1">
                           <button onClick={() => saveEdit(shop._id)} className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-700">Save</button>
                           <button onClick={() => setEditingId(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black uppercase tracking-widest text-blue-700 hover:bg-slate-50">Cancel</button>

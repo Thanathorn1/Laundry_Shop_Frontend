@@ -633,8 +633,8 @@ export default function CreateOrderPage() {
                 onChange={(event) => setLaundryType(event.target.value as 'wash' | 'dry')}
                 className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
               >
-                <option value="wash">Wash Laundry</option>
-                <option value="dry">Dry Laundry</option>
+                <option value="wash">Wash + Dry Laundry</option>
+                <option value="dry">Dry Only Laundry</option>
               </select>
             </div>
             <div>
@@ -820,12 +820,21 @@ export default function CreateOrderPage() {
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
             <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Auto Price</p>
             <p className="mt-1 text-lg font-black text-emerald-800">฿{estimatedPrice.totalPrice.toLocaleString()}</p>
-            <p className="mt-1 text-xs font-semibold text-emerald-700/90">
-              สูตร: ({serviceTimeMinutes} ÷ 50) × {unitPrice} บาท
-            </p>
+            <div className="mt-1 space-y-1 text-xs font-semibold text-emerald-700/90">
+              <p>สูตรค่าซัก: {laundryType === 'dry' ? '0 บาท (Dry only)' : `(${serviceTimeMinutes} ÷ 50) × ${unitPrice} บาท`}</p>
+              <p>สูตรค่าอบผ้า: ({serviceTimeMinutes} ÷ 50) × 20 บาท</p>
+            </div>
             <div className="mt-3 border-t border-emerald-200 pt-2 text-xs font-semibold text-emerald-800 space-y-1">
               <div className="flex items-center justify-between">
-                <span>ค่าซัก/อบ</span>
+                <span>ค่าซัก</span>
+                <span>฿{estimatedPrice.washPrice.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>ค่าอบผ้า</span>
+                <span>฿{estimatedPrice.dryPrice.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>รวมค่าซัก/อบ</span>
                 <span>฿{estimatedPrice.baseLaundryPrice.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">

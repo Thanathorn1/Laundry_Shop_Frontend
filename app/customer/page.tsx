@@ -143,7 +143,7 @@ interface Order {
     _id: string;
     productName: string;
     contactPhone: string;
-    status: 'pending' | 'assigned' | 'picked_up' | 'at_shop' | 'washing' | 'laundry_done' | 'out_for_delivery' | 'completed' | 'cancelled';
+    status: 'pending' | 'assigned' | 'picked_up' | 'at_shop' | 'washing' | 'drying' | 'laundry_done' | 'out_for_delivery' | 'completed' | 'cancelled';
     pickupAddress: string | null;
     pickupType: 'now' | 'schedule';
     pickupAt: string | null;
@@ -187,6 +187,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     picked_up: { label: 'Picked Up', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200', icon: '📦' },
     at_shop: { label: 'At Shop', color: 'text-fuchsia-700', bg: 'bg-fuchsia-50 border-fuchsia-200', icon: '🏪' },
     washing: { label: 'Washing', color: 'text-cyan-700', bg: 'bg-cyan-50 border-cyan-200', icon: '🧺' },
+    drying: { label: 'Drying', color: 'text-violet-700', bg: 'bg-violet-50 border-violet-200', icon: '💨' },
     laundry_done: { label: 'Laundry Done', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: '✨' },
     out_for_delivery: { label: 'Out for Delivery', color: 'text-sky-700', bg: 'bg-sky-50 border-sky-200', icon: '🛵' },
     completed: { label: 'Completed', color: 'text-green-700', bg: 'bg-green-50 border-green-200', icon: '✅' },
@@ -724,7 +725,7 @@ export default function CustomerPage() {
                 origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : pickupPoint;
                 target = shopPoint;
                 label = 'Rider is heading to laundry shop';
-            } else if (trackedOrder.status === 'at_shop' || trackedOrder.status === 'washing') {
+            } else if (trackedOrder.status === 'at_shop' || trackedOrder.status === 'washing' || trackedOrder.status === 'drying') {
                 origin = pickupPoint;
                 target = shopPoint;
                 label = 'Laundry is being processed at shop';
@@ -779,7 +780,7 @@ export default function CustomerPage() {
         ? '#059669'
         : trackedOrder?.status === 'picked_up'
             ? '#0284c7'
-            : trackedOrder?.status === 'at_shop' || trackedOrder?.status === 'washing'
+            : trackedOrder?.status === 'at_shop' || trackedOrder?.status === 'washing' || trackedOrder?.status === 'drying'
                 ? '#a21caf'
             : trackedOrder?.status === 'laundry_done'
                 ? '#1d4ed8'
@@ -1191,7 +1192,7 @@ export default function CustomerPage() {
                                                 </p>
                                             )}
                                             <p className="text-xs text-blue-700/70 mb-1">
-                                                {order.laundryType === 'dry' ? 'Dry Laundry' : 'Wash Laundry'}
+                                                {order.laundryType === 'dry' ? 'Dry Only Laundry' : 'Wash + Dry Laundry'}
                                                 {order.weightCategory ? ` • ${getWeightCategoryLabel(order.weightCategory)}` : ''}
                                                 {` • ${displayServiceTime} min`}
                                             </p>
