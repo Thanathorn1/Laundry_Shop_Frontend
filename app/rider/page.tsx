@@ -300,6 +300,8 @@ export default function RiderDashboard() {
     }, []);
 
     useEffect(() => {
+        if (!API_BASE_URL) return;
+
         const token = localStorage.getItem('access_token');
         const userId = getUserIdFromAccessToken(token);
         if (!userId) return;
@@ -328,8 +330,7 @@ export default function RiderDashboard() {
                 window.clearTimeout(refreshTimerRef.current);
             }
             refreshTimerRef.current = window.setTimeout(() => {
-                fetchAvailableOrders();
-                fetchMyTasks();
+                void refreshRiderData();
             }, 300);
         });
 
@@ -347,8 +348,7 @@ export default function RiderDashboard() {
     // Polling fallback: re-fetch every 5 seconds so data stays fresh even if WebSocket drops
     useEffect(() => {
         const interval = setInterval(() => {
-            fetchAvailableOrders();
-            fetchMyTasks();
+            void refreshRiderData();
         }, 5000);
         return () => clearInterval(interval);
     }, []);
@@ -591,19 +591,42 @@ export default function RiderDashboard() {
         [myTasks]
     );
 
-    const fetchAvailableOrders = async () => {
-        const data = await apiFetch('/rider/available');
-        setAvailableOrders(Array.isArray(data) ? data : []);
+    const fetchAvailableOrders = async (silent = false) => {
+        try {
+            const data = await apiFetch('/rider/available');
+            setAvailableOrders(Array.isArray(data) ? data : []);
+        } catch (err) {
+            if (!silent) throw err;
+            console.error('Failed to refresh available orders:', err);
+        }
     };
 
-    const fetchMyTasks = async () => {
-        const data = await apiFetch('/rider/my-tasks');
-        setMyTasks(Array.isArray(data) ? data : []);
+    const fetchMyTasks = async (silent = false) => {
+        try {
+            const data = await apiFetch('/rider/my-tasks');
+            setMyTasks(Array.isArray(data) ? data : []);
+        } catch (err) {
+            if (!silent) throw err;
+            console.error('Failed to refresh rider tasks:', err);
+        }
     };
 
-    const fetchShops = async () => {
-        const data = await apiFetch('/map/shops');
-        setShops(Array.isArray(data) ? data : []);
+    const fetchShops = async (silent = false) => {
+        try {
+            const data = await apiFetch('/map/shops');
+            setShops(Array.isArray(data) ? data : []);
+        } catch (err) {
+            if (!silent) throw err;
+            console.error('Failed to refresh shops:', err);
+        }
+    };
+
+    const refreshRiderData = async () => {
+        await Promise.all([
+            fetchAvailableOrders(true),
+            fetchMyTasks(true),
+            fetchShops(true),
+        ]);
     };
 
     const fetchData = async () => {

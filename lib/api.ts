@@ -1,11 +1,14 @@
 const RAW_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'http://localhost:3000';
+  (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : '');
 
-export const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '').endsWith('/api')
-  ? RAW_API_BASE_URL.replace(/\/+$/, '')
-  : `${RAW_API_BASE_URL.replace(/\/+$/, '')}/api`;
+const normalizedBase = RAW_API_BASE_URL.replace(/\/+$/, '');
+
+export const API_BASE_URL = normalizedBase
+  ? normalizedBase.endsWith('/api')
+    ? normalizedBase
+    : `${normalizedBase}/api`
+  : '';
 
 function joinUrl(baseUrl: string, path: string) {
   const base = baseUrl.replace(/\/+$/, '');
@@ -14,6 +17,10 @@ function joinUrl(baseUrl: string, path: string) {
 }
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
+  if (!API_BASE_URL) {
+    throw new Error('Missing NEXT_PUBLIC_API_URL configuration');
+  }
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
 
   if (typeof window !== 'undefined' && !token && endpoint !== '/auth/signin' && endpoint !== '/auth/signup') {
@@ -40,6 +47,10 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 }
 
 export async function apiUpload(endpoint: string, formData: FormData) {
+  if (!API_BASE_URL) {
+    throw new Error('Missing NEXT_PUBLIC_API_URL configuration');
+  }
+
   const token = localStorage.getItem('access_token');
 
   const response = await fetch(joinUrl(API_BASE_URL, endpoint), {
