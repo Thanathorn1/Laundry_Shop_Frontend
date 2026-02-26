@@ -4,14 +4,39 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { apiFetch } from '@/lib/api'
 
+interface RiderMapOrder {
+  _id: string
+  customerName: string
+  pickupAddress: string
+  totalPrice: number
+  pickupLocation?: {
+    type: string
+    coordinates: [number, number]
+  }
+  distance?: number
+}
+
+interface RiderMapShop {
+  _id: string
+  shopName?: string
+  label?: string
+  phoneNumber?: string
+  totalWashingMachines?: number
+  machineAvailable?: number
+  location?: {
+    type: string
+    coordinates: [number, number]
+  }
+}
+
 const RiderMapClient = dynamic(
   () => import('@/components/RiderMapClient'),
   { ssr: false }
 )
 
 export default function Page() {
-  const [orders, setOrders] = useState([])
-  const [shops, setShops] = useState([])
+  const [orders, setOrders] = useState<RiderMapOrder[]>([])
+  const [shops, setShops] = useState<RiderMapShop[]>([])
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null)
   const [loading, setLoading] = useState(true)
 

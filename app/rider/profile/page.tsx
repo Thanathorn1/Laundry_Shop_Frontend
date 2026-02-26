@@ -35,6 +35,20 @@ export default function RiderProfile() {
         vehicleImageUrl: '',
     };
 
+    const normalizeProfile = (input: unknown): RiderProfile => {
+        const source = (input && typeof input === 'object') ? (input as Record<string, unknown>) : {};
+        return {
+            fullName: typeof source.fullName === 'string' ? source.fullName : '',
+            licensePlate: typeof source.licensePlate === 'string' ? source.licensePlate : '',
+            drivingLicense: typeof source.drivingLicense === 'string' ? source.drivingLicense : '',
+            phone: typeof source.phone === 'string' ? source.phone : '',
+            address: typeof source.address === 'string' ? source.address : '',
+            riderImageUrl: typeof source.riderImageUrl === 'string' ? source.riderImageUrl : '',
+            vehicleImageUrl: typeof source.vehicleImageUrl === 'string' ? source.vehicleImageUrl : '',
+            isApproved: Boolean(source.isApproved),
+        };
+    };
+
     const isMissingProfileError = (message: string) => {
         const m = (message || '').toLowerCase();
         return (
@@ -49,7 +63,7 @@ export default function RiderProfile() {
         try {
             setLoading(true);
             const data = await apiFetch('/rider/profile');
-            setProfile(data);
+            setProfile(normalizeProfile(data));
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
 
