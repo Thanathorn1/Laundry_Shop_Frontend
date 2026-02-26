@@ -61,6 +61,25 @@ type LeafletLib = {
 
 const DEFAULT_PICKUP = { lat: 13.7563, lng: 100.5018 };
 
+function getRoleFromAccessToken(token: string | null): 'user' | 'rider' | 'admin' | null {
+  if (!token) return null;
+  try {
+    const payloadBase64 = token.split('.')[1];
+    if (!payloadBase64) return null;
+
+    const normalized = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    const parsed = JSON.parse(atob(padded)) as { role?: string };
+
+    if (parsed.role === 'admin' || parsed.role === 'rider' || parsed.role === 'user') {
+      return parsed.role;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadLeaflet() {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { L?: LeafletLib };
@@ -130,9 +149,18 @@ export default function CreateOrderPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [hasMounted, setHasMounted] = useState(false);
   const [mustCompleteProfile, setMustCompleteProfile] = useState(false);
+  const [isAdminSession, setIsAdminSession] = useState(false);
 
   useEffect(() => {
     setHasMounted(true);
+
+    const token = localStorage.getItem('access_token');
+    const tokenRole = getRoleFromAccessToken(token);
+    const authRole = localStorage.getItem('auth_role') || tokenRole;
+    if (tokenRole && localStorage.getItem('auth_role') !== tokenRole) {
+      localStorage.setItem('auth_role', tokenRole);
+    }
+    setIsAdminSession(authRole === 'admin');
   }, []);
 
   useEffect(() => {
@@ -487,12 +515,75 @@ export default function CreateOrderPage() {
   };
 
   if (!hasMounted) {
-    return <div className="min-h-screen bg-slate-50 p-6 text-blue-900" />;
+    return <div className="min-h-screen bg-slate-50 text-blue-900" />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 text-blue-900">
-      <main className="mx-auto w-full max-w-3xl rounded-[2rem] border border-white bg-white p-8 shadow-2xl shadow-blue-100/50">
+    <div className="flex min-h-screen bg-slate-50 text-blue-900">
+      <aside className="hidden md:block w-72 border-r border-slate-200 bg-white p-8 shadow-sm h-screen sticky top-0">
+        <div className="flex items-center gap-3 mb-10">
+          <div className="h-10 w-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+            <span className="text-white font-black text-xl">C</span>
+          </div>
+          <h2 className="text-4 font-black text-blue-900 tracking-tight uppercase">Laundry Client</h2>
+        </div>
+        <nav className="space-y-1.5">
+          <Link href="/customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+            <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">🏠</span>
+            Dashboard
+          </Link>
+          <Link href="/customer/create-order" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold bg-blue-50 text-blue-700 shadow-sm transition-all border border-blue-100">
+            <span className="mr-3 text-lg">➕</span>
+            New Order
+          </Link>
+          <Link href="/customer/history" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+            <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">🗒️</span>
+            History
+          </Link>
+
+          {isAdminSession && (
+            <>
+              <div className="px-4 pt-4 text-[10px] font-black text-blue-300 uppercase tracking-widest">Admin</div>
+              <Link href="/admin/customers?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">👤</span>
+                Customer List
+              </Link>
+              <Link href="/admin/riders?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🛵</span>
+                Rider List
+              </Link>
+              <Link href="/admin/admins?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🛡️</span>
+                Admin List
+              </Link>
+              <Link href="/admin/employees?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🧑‍🔧</span>
+                Employee List
+              </Link>
+              <Link href="/admin/pin-shop?from=customer" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">📍</span>
+                Pin Shop
+              </Link>
+            </>
+          )}
+
+          <div className="pt-6 mt-6 border-t border-slate-100">
+            <button
+              onClick={() => {
+                localStorage.clear();
+                window.location.href = '/';
+              }}
+              className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-rose-500 hover:bg-rose-50 transition-all group"
+            >
+              <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">🚪</span>
+              Logout
+            </button>
+          </div>
+        </nav>
+      </aside>
+
+      <main className="flex-1 p-6 pb-24 md:pb-6">
+      <div className="mx-auto w-full max-w-3xl rounded-[2rem] border border-white bg-white p-8 shadow-2xl shadow-blue-100/50">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl font-black tracking-tight">Create Order</h1>
           <Link href="/customer" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50">
@@ -863,7 +954,35 @@ export default function CreateOrderPage() {
 
         {success && <p className="mt-4 rounded-xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-700">{success}</p>}
         {error && <p className="mt-4 rounded-xl bg-rose-100 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
+      </div>
       </main>
+
+      <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 backdrop-blur md:hidden">
+        <div className="grid grid-cols-4 gap-2">
+          <Link href="/customer" className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70">
+            <span className="text-base">🏠</span>
+            Dashboard
+          </Link>
+          <Link href="/customer/create-order" className="flex flex-col items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-2 py-2 text-[11px] font-black text-blue-700">
+            <span className="text-base">➕</span>
+            New Order
+          </Link>
+          <Link href="/customer/history" className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70">
+            <span className="text-base">🗒️</span>
+            History
+          </Link>
+          <button
+            onClick={() => {
+              localStorage.clear();
+              window.location.href = '/';
+            }}
+            className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-rose-500"
+          >
+            <span className="text-base">🚪</span>
+            Logout
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }

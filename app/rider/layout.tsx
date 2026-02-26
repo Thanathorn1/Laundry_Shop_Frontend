@@ -1,13 +1,46 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import Script from 'next/script';
+
+function getRoleFromAccessToken(token: string | null): 'user' | 'rider' | 'admin' | 'employee' | null {
+    if (!token) return null;
+    try {
+        const payloadBase64 = token.split('.')[1];
+        if (!payloadBase64) return null;
+
+        const normalized = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+        const json = atob(padded);
+        const parsed = JSON.parse(json) as { role?: string };
+
+        if (parsed.role === 'admin' || parsed.role === 'rider' || parsed.role === 'user' || parsed.role === 'employee') {
+            return parsed.role;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
 
 export default function RiderLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const [isAdminSession, setIsAdminSession] = useState(false);
+
+    useEffect(() => {
+        const token = localStorage.getItem('access_token');
+        const tokenRole = getRoleFromAccessToken(token);
+        const authRole = localStorage.getItem('auth_role') || tokenRole;
+        if (tokenRole && localStorage.getItem('auth_role') !== tokenRole) {
+            localStorage.setItem('auth_role', tokenRole);
+        }
+        setIsAdminSession(authRole === 'admin');
+    }, []);
+
     return (
         <div className="flex min-h-screen bg-slate-50 font-sans text-blue-900">
             {/* Sidebar */}
@@ -31,6 +64,33 @@ export default function RiderLayout({
                         <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">👤</span>
                         Profile
                     </Link>
+
+                    {isAdminSession && (
+                        <>
+                            <div className="px-4 pt-4 text-[10px] font-black text-blue-300 uppercase tracking-widest">Admin</div>
+                            <Link href="/admin/customers?from=rider" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">👤</span>
+                                Customer List
+                            </Link>
+                            <Link href="/admin/riders?from=rider" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🛵</span>
+                                Rider List
+                            </Link>
+                            <Link href="/admin/admins?from=rider" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🛡️</span>
+                                Admin List
+                            </Link>
+                            <Link href="/admin/employees?from=rider" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">🧑‍🔧</span>
+                                Employee List
+                            </Link>
+                            <Link href="/admin/pin-shop?from=rider" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/70 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                                <span className="mr-3 text-lg opacity-60 group-hover:opacity-100">📍</span>
+                                Pin Shop
+                            </Link>
+                        </>
+                    )}
+
                     <div className="pt-6 mt-6 border-t border-slate-100">
                         <button
                             onClick={() => {
