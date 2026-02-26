@@ -54,3 +54,21 @@ export async function apiUpload(endpoint: string, formData: FormData) {
 
   return response.json();
 }
+
+export function resolveImageUrl(url: string | undefined | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const baseUrl = API_BASE_URL.replace(/\/api$/, '');
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `${baseUrl}${path}`;
+}
+
+export const PROFILE_UPDATE_EVENT = 'profile-updated';
+
+export function triggerProfileUpdate() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(PROFILE_UPDATE_EVENT));
+  }
+}

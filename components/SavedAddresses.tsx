@@ -9,7 +9,10 @@ import {
   CheckCircle,
   Loader,
   Navigation,
+  X,
+  ChevronRight
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import BottomSheet from "./BottomSheet";
 
@@ -41,67 +44,11 @@ function getCoords(addr: SavedAddress): { lat: number; lng: number } | null {
   return null;
 }
 
-type LatLng = { lat: number; lng: number };
-
-type LeafletMarker = {
-  addTo: (map: LeafletMap) => LeafletMarker;
-  on: (event: string, handler: () => void) => void;
-  getLatLng: () => LatLng;
-  setLatLng: (latLng: LatLng) => void;
-  remove: () => void;
-};
-
-type LeafletMap = {
-  on: (event: string, handler: (event: { latlng: LatLng }) => void) => void;
-  panTo: (latLng: [number, number]) => void;
-  remove: () => void;
-  invalidateSize: () => void;
-};
-
-type LeafletLib = {
-  map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
-  tileLayer: (url: string, options: { maxZoom: number; attribution: string }) => { addTo: (map: LeafletMap) => void };
-  marker: (latLng: [number, number], options: { draggable: boolean }) => LeafletMarker;
-};
+import { loadLeaflet, LeafletLib, LeafletMap, LeafletMarker, LatLng } from "@/lib/leaflet-loader";
 
 const DEFAULT_CENTER = { lat: 13.7563, lng: 100.5018 };
 
-async function loadLeaflet(): Promise<LeafletLib | null> {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as { L?: LeafletLib };
-  if (w.L) return w.L;
-
-  if (!document.querySelector('link[data-leaflet="true"]')) {
-    const css = document.createElement("link");
-    css.rel = "stylesheet";
-    css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    css.setAttribute("data-leaflet", "true");
-    document.head.appendChild(css);
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
-    if (existingScript) {
-      if ((window as unknown as { L?: LeafletLib }).L) {
-        resolve();
-        return;
-      }
-      existingScript.addEventListener("load", () => resolve());
-      existingScript.addEventListener("error", () => reject(new Error("Failed to load leaflet")));
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.async = true;
-    script.setAttribute("data-leaflet", "true");
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load leaflet"));
-    document.body.appendChild(script);
-  });
-
-  return (window as unknown as { L?: LeafletLib }).L ?? null;
-}
+// Local loader removed
 
 export default function SavedAddresses() {
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
@@ -145,9 +92,7 @@ export default function SavedAddresses() {
 
   // Initialize map when bottom sheet opens
   const initMap = useCallback(async () => {
-    // Small delay to ensure DOM is ready inside BottomSheet
     await new Promise((r) => setTimeout(r, 200));
-
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     try {
@@ -184,15 +129,12 @@ export default function SavedAddresses() {
 
       mapInstanceRef.current = map;
       markerRef.current = marker;
-
-      // Fix map rendering inside BottomSheet
       setTimeout(() => map.invalidateSize(), 300);
     } catch {
       // Map loading failed silently
     }
   }, [lat, lng]);
 
-  // Setup / teardown map on bottom sheet open/close
   useEffect(() => {
     if (showAddForm) {
       initMap();
@@ -203,7 +145,6 @@ export default function SavedAddresses() {
         markerRef.current = null;
       }
     }
-
     return () => {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
@@ -211,8 +152,7 @@ export default function SavedAddresses() {
         markerRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showAddForm]);
+  }, [showAddForm, initMap]);
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) return;
@@ -228,7 +168,7 @@ export default function SavedAddresses() {
         }
       },
       () => {
-        setFormError("ไม่สามารถเข้าถึงตำแหน่งของคุณได้ กรุณาอนุญาตการเข้าถึงตำแหน่ง");
+        setFormError("Geolocation access denied. Please enable location services.");
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -239,7 +179,7 @@ export default function SavedAddresses() {
     setFormError(null);
 
     if (!label.trim() || !address.trim() || !lat.trim() || !lng.trim()) {
-      setFormError("Please fill in all fields");
+      setFormError("All navigational parameters must be defined.");
       return;
     }
 
@@ -270,20 +210,19 @@ export default function SavedAddresses() {
     } catch (err) {
       setFormStatus("error");
       setFormError(
-        err instanceof Error ? err.message : "Failed to add address"
+        err instanceof Error ? err.message : "Failed to synchronize address"
       );
     }
   };
 
   const handleDeleteAddress = async (id: string) => {
     if (!confirm("Are you sure you want to delete this address?")) return;
-
     try {
       await apiFetch(`/customers/saved-addresses/${id}`, { method: "DELETE" });
       setAddresses(addresses.filter((addr) => getId(addr) !== id));
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to delete address"
+        err instanceof Error ? err.message : "Failed to purge address"
       );
     }
   };
@@ -301,197 +240,255 @@ export default function SavedAddresses() {
       );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to set default address"
+        err instanceof Error ? err.message : "Failed to update default status"
       );
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <div className="h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin shadow-glow" />
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">Mapping Geodata...</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      {error && (
-        <div className="flex gap-3 rounded-lg bg-red-50 p-4">
-          <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-700">{error}</p>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-8">
-          <Loader size={24} className="animate-spin text-blue-600" />
-        </div>
-      ) : addresses.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
-          <MapPin size={32} className="mx-auto mb-3 text-gray-400" />
-          <p className="text-gray-600">No saved addresses yet</p>
-          <p className="text-sm text-gray-500 mt-1">
-            Add your first address to get started
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {addresses.map((addr, index) => (
-            <div
-              key={getId(addr) || index}
-              className="rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-gray-900">{addr.label}</h3>
-                    {addr.isDefault && (
-                      <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
-                        Default
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 break-words">
-                    {addr.address}
-                  </p>
-                  {(() => {
-                    const coords = getCoords(addr);
-                    return coords ? (
-                      <p className="text-xs text-gray-500 mt-2">
-                        📍 {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
-                      </p>
-                    ) : null;
-                  })()}
-                </div>
-                <button
-                  onClick={() => handleDeleteAddress(getId(addr))}
-                  className="text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                  title="Delete address"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-              {!addr.isDefault && (
-                <button
-                  onClick={() => handleSetDefault(getId(addr))}
-                  className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Set as default
-                </button>
-              )}
+    <div className="space-y-8">
+      <AnimatePresence>
+        {addresses.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            className="rounded-[3rem] border-2 border-dashed border-slate-100  bg-slate-50 border-slate-100 p-16 text-center"
+          >
+            <div className="h-20 w-20 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-xl border border-slate-100">
+              <MapPin size={40} className="text-slate-300" />
             </div>
-          ))}
-        </div>
-      )}
+            <h3 className="text-xl font-black text-slate-900  uppercase tracking-tight mb-2">No active nodes</h3>
+            <p className="text-xs font-bold text-slate-400 max-w-[240px] mx-auto leading-relaxed">
+              Synchronize your pickup and delivery parameters by adding your first spatial node.
+            </p>
+          </motion.div>
+        ) : (
+          <div className="grid gap-6">
+            {addresses.map((addr, index) => (
+              <motion.div
+                key={getId(addr) || index}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="group relative bg-white  border border-slate-100 rounded-[2.5rem] p-8 shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 overflow-hidden"
+              >
+                {/* Status Indicator */}
+                <div className={`absolute top-0 left-0 bottom-0 w-2 transition-colors duration-500 ${addr.isDefault ? 'bg-blue-600 shadow-[2px_0_15px_-3px_rgba(37,99,235,0.4)]' : 'bg-slate-100'}`} />
 
-      {/* Add Address Button */}
+                <div className="flex items-start justify-between gap-6 ml-4">
+                  <div className="flex-1 min-w-0 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-10 w-10 rounded-2xl flex items-center justify-center transition-colors ${addr.isDefault ? 'bg-blue-600 text-white shadow-glow' : 'bg-slate-50 text-slate-400'}`}>
+                        <MapPin size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-black text-slate-900  uppercase tracking-widest truncate">{addr.label}</h3>
+                          {addr.isDefault && (
+                            <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-blue-50 text-blue-600 px-3 py-1 rounded-full border border-blue-100 ">Operational</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs font-bold text-slate-500  leading-relaxed pl-[3.25rem]">
+                      {addr.address}
+                    </p>
+
+                    {(() => {
+                      const coords = getCoords(addr);
+                      return coords ? (
+                        <div className="pl-[3.25rem] flex items-center gap-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                          <span className="bg-slate-100 px-2 py-1 rounded-lg border border-slate-200/50">Lat: {coords.lat.toFixed(4)}</span>
+                          <span className="bg-slate-100 px-2 py-1 rounded-lg border border-slate-200/50">Lng: {coords.lng.toFixed(4)}</span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!addr.isDefault && (
+                      <button
+                        onClick={() => handleSetDefault(getId(addr))}
+                        className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50  rounded-2xl transition-all"
+                        title="Set as operational default"
+                      >
+                        <Navigation size={18} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteAddress(getId(addr))}
+                      className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50  rounded-2xl transition-all"
+                      title="Purge address node"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </AnimatePresence>
+
       <button
         onClick={() => setShowAddForm(true)}
-        className="w-full rounded-lg border-2 border-blue-600 px-4 py-3 font-semibold text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+        className="group relative w-full overflow-hidden rounded-[2rem] bg-slate-900  text-white  px-8 py-5 text-sm font-black uppercase tracking-[0.2em] shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-4"
       >
-        <Plus size={20} />
-        Add New Address
+        <Plus size={18} className="group-hover:rotate-90 transition-transform duration-500" />
+        New Address Node
+        <div className="absolute inset-0 bg-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        <span className="relative z-10 flex items-center justify-center gap-4">
+          <Plus size={18} className="group-hover:rotate-90 transition-transform duration-500" />
+          New Address Node
+        </span>
       </button>
 
-      {/* Add Address Form Modal */}
-      <BottomSheet
-        isOpen={showAddForm}
-        onClose={() => {
-          setShowAddForm(false);
-          setFormStatus("idle");
-          setFormError(null);
-        }}
-        title="Add New Address"
-      >
-        {formStatus === "success" ? (
-          <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
-            <CheckCircle size={48} className="text-green-500" />
-            <h3 className="text-lg font-semibold text-gray-900">
-              Address Added
-            </h3>
-            <p className="text-sm text-gray-600">
-              Your address has been saved successfully
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={handleAddAddress} className="space-y-4">
-            {formError && (
-              <div className="flex gap-3 rounded-lg bg-red-50 p-3">
-                <AlertCircle size={18} className="text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-red-700">{formError}</p>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-900">
-                Label (Home, Work, etc.)
-              </label>
-              <input
-                type="text"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="e.g., Home"
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-900">
-                Address
-              </label>
-              <textarea
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Enter your address"
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
-                rows={2}
-              />
-            </div>
-
-            {/* Map Picker */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-semibold text-gray-900">
-                  📍 Select Location on Map
-                </label>
-                <button
-                  type="button"
-                  onClick={useCurrentLocation}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
-                >
-                  <Navigation size={14} />
-                  Use Current Location
-                </button>
-              </div>
-              <div
-                ref={mapContainerRef}
-                className="h-52 w-full rounded-xl border border-gray-200 overflow-hidden"
-                style={{ zIndex: 0 }}
-              />
-              <p className="text-xs text-gray-500">
-                Click on the map or drag the marker to select a location
-              </p>
-              <div className="flex gap-3 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                <span>Lat: <strong>{Number(lat).toFixed(4)}</strong></span>
-                <span>Lng: <strong>{Number(lng).toFixed(4)}</strong></span>
-              </div>
-            </div>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isDefault}
-                onChange={(e) => setIsDefault(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 accent-blue-600"
-              />
-              <span className="text-sm font-medium text-gray-700">
-                Set as default address
-              </span>
-            </label>
-
-            <button
-              type="submit"
-              disabled={formStatus === "loading"}
-              className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-gray-400 text-sm"
+      {/* Modern Bottom Sheet Overlay */}
+      <AnimatePresence>
+        {showAddForm && (
+          <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowAddForm(false)}
+              className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="relative w-full max-w-2xl bg-white  rounded-t-[3rem] sm:rounded-b-[3rem] overflow-hidden shadow-2xl border border-white/20"
             >
-              {formStatus === "loading" ? "Adding..." : "Add Address"}
-            </button>
-          </form>
+              <div className="p-6 sm:p-10 overflow-y-auto max-h-[85vh]">
+                <div className="flex items-center justify-between mb-10">
+                  <div className="space-y-1">
+                    <h3 className="text-2xl font-black text-slate-900 tracking-tight uppercase italic">Add Node</h3>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">Spatial Parameter Registration</p>
+                  </div>
+                  <X className="h-6 w-6 text-slate-400 cursor-pointer hover:text-slate-900 transition-colors" onClick={() => setShowAddForm(false)} />
+                </div>
+
+                {formStatus === "success" ? (
+                  <div className="flex flex-col items-center justify-center gap-6 py-20 text-center">
+                    <div className="h-20 w-20 bg-emerald-50  rounded-[2.5rem] flex items-center justify-center shadow-glow border border-emerald-100 ">
+                      <CheckCircle size={40} className="text-emerald-500" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-xl font-black text-slate-900  uppercase tracking-tight">Synchronization Complete</h3>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Node registered successfully</p>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAddAddress} className="space-y-8">
+                    {formError && (
+                      <div className="flex gap-4 rounded-[2rem] bg-rose-50  border border-rose-100  p-6 animate-shake">
+                        <AlertCircle size={20} className="text-rose-600 flex-shrink-0" />
+                        <p className="text-sm font-bold text-rose-700 ">{formError}</p>
+                      </div>
+                    )}
+
+                    <div className="grid gap-6 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Node Label</label>
+                        <input
+                          type="text"
+                          value={label}
+                          onChange={(e) => setLabel(e.target.value)}
+                          placeholder="e.g. Headquarters"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 focus:bg-white transition-all placeholder:text-slate-400"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Geospatial Type</label>
+                        <div className="flex gap-2">
+                          {['Home', 'Work', 'Other'].map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setLabel(t)}
+                              className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${label === t ? 'bg-blue-600 border-blue-600 text-white shadow-glow' : 'bg-slate-50  border-slate-200  text-slate-400 hover:border-slate-300'}`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Physical Address</label>
+                      <textarea
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="Street, building, floor, suite..."
+                        className="w-full bg-slate-50 /50 border border-slate-200  rounded-2xl px-6 py-4 text-sm font-bold text-slate-900  outline-none focus:border-blue-500 focus:bg-white  transition-all placeholder:text-slate-400 resize-none"
+                        rows={3}
+                      />
+                    </div>
+
+                    {/* Enhanced Map Picker */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Spatial Mapping</label>
+                        <button
+                          type="button"
+                          onClick={useCurrentLocation}
+                          className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-emerald-50  text-emerald-600 border border-emerald-100  text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100  transition-all shadow-sm"
+                        >
+                          <Navigation size={14} />
+                          Live Coordinates
+                        </button>
+                      </div>
+                      <div className="relative rounded-[2.5rem] border-4 border-slate-50 shadow-inner overflow-hidden group">
+                        <div
+                          ref={mapContainerRef}
+                          className="h-64 w-full relative z-0"
+                        />
+                        <div className="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-slate-200 shadow-xl flex gap-4 text-[9px] font-black uppercase tracking-[0.2em]">
+                          <span className="text-slate-400">Lat <strong className="text-slate-900 ml-2">{Number(lat).toFixed(4)}</strong></span>
+                          <span className="text-slate-400">Lng <strong className="text-slate-900 ml-2">{Number(lng).toFixed(4)}</strong></span>
+                        </div>
+                      </div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] italic text-center">Drag node marker or select point on grid</p>
+                    </div>
+
+                    <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[2rem] border border-slate-100 ">
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-black text-slate-900  uppercase tracking-widest">Primary Node</h4>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Mark as operational default</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="sr-only peer" />
+                        <div className="w-14 h-8 bg-slate-200  rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600 shadow-inner" />
+                      </label>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={formStatus === "loading"}
+                      className="group relative w-full overflow-hidden rounded-[2rem] bg-blue-600 text-white px-8 py-5 text-sm font-black uppercase tracking-[0.2em] shadow-glow hover:shadow-premium transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <span className="relative z-10 flex items-center justify-center gap-3">
+                        {formStatus === "loading" ? "Transmitting Geodata..." : "Register Node"}
+                        {formStatus !== "loading" && <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />}
+                      </span>
+                    </button>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          </div>
         )}
-      </BottomSheet>
+      </AnimatePresence>
     </div>
   );
 }

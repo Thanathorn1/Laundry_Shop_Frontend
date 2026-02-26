@@ -1,6 +1,7 @@
 "use client";
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
@@ -16,29 +17,15 @@ import {
     Trash2,
     XCircle,
     Bike,
-    PlusCircle
+    PlusCircle,
+    TrendingUp,
+    Zap,
+    Share2,
+    MapPin
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-type LatLng = { lat: number; lng: number };
-
-type LeafletMarker = {
-    addTo: (map: LeafletMap) => LeafletMarker;
-    on: (event: string, handler: () => void) => void;
-    getLatLng: () => LatLng;
-    setLatLng: (latLng: LatLng) => void;
-};
-
-type LeafletMap = {
-    on: (event: string, handler: (event: { latlng: LatLng }) => void) => void;
-    panTo: (latLng: [number, number]) => void;
-    remove: () => void;
-};
-
-type LeafletLib = {
-    map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
-    tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
-    marker: (latLng: [number, number], options: { draggable: boolean }) => LeafletMarker;
-};
+import { loadLeaflet, LeafletLib, LeafletMap, LeafletMarker, LatLng } from "@/lib/leaflet-loader";
 
 const DEFAULT_PICKUP = { lat: 13.7563, lng: 100.5018 };
 
@@ -62,42 +49,7 @@ function getRoleFromAccessToken(token: string | null): 'user' | 'rider' | 'admin
     }
 }
 
-async function loadLeaflet() {
-    if (typeof window === 'undefined') return null;
-    const w = window as unknown as { L?: LeafletLib };
-    if (w.L) return w.L;
-
-    if (!document.querySelector('link[data-leaflet="true"]')) {
-        const css = document.createElement('link');
-        css.rel = 'stylesheet';
-        css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        css.setAttribute('data-leaflet', 'true');
-        document.head.appendChild(css);
-    }
-
-    await new Promise<void>((resolve, reject) => {
-        const existingScript = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
-        if (existingScript) {
-            if ((window as any).L) {
-                resolve();
-                return;
-            }
-            existingScript.addEventListener('load', () => resolve());
-            existingScript.addEventListener('error', () => reject(new Error('Failed to load leaflet')));
-            return;
-        }
-
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.async = true;
-        script.setAttribute('data-leaflet', 'true');
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('Failed to load leaflet'));
-        document.body.appendChild(script);
-    });
-
-    return (window as unknown as { L?: LeafletLib }).L ?? null;
-}
+// Local loader removed
 
 interface Order {
     _id: string;
@@ -123,12 +75,12 @@ interface CustomerProfile {
     role?: 'user' | 'rider' | 'admin';
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-    pending: { label: 'Pending', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', icon: Clock },
-    assigned: { label: 'Assigned', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: Bike },
-    picked_up: { label: 'Picked Up', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200', icon: Package },
-    completed: { label: 'Completed', color: 'text-green-700', bg: 'bg-green-50 border-green-200', icon: CheckCircle },
-    cancelled: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-50 border-red-200', icon: XCircle },
+const STATUS_CONFIG: Record<string, { label: string; color: string; border: string; bg: string; icon: any }> = {
+    pending: { label: 'Waiting', color: 'text-amber-500', border: 'border-amber-500', bg: 'bg-amber-50 ', icon: Clock },
+    assigned: { label: 'Assigned', color: 'text-blue-500', border: 'border-blue-500', bg: 'bg-blue-50 ', icon: Bike },
+    picked_up: { label: 'Washing', color: 'text-purple-500', border: 'border-purple-500', bg: 'bg-purple-50 ', icon: Package },
+    completed: { label: 'Finished', color: 'text-emerald-500', border: 'border-emerald-500', bg: 'bg-emerald-50 ', icon: CheckCircle },
+    cancelled: { label: 'Failed', color: 'text-rose-500', border: 'border-rose-500', bg: 'bg-rose-50 ', icon: XCircle },
 };
 
 export default function CustomerPage() {
@@ -395,18 +347,17 @@ export default function CustomerPage() {
 
     // Improved Greeting Logic
     const getGreeting = () => {
-        if (loading) return 'Welcome back!';
-        if (profile?.firstName) return `Hello, ${profile.firstName}!`;
-        return 'Welcome back!';
+        if (loading) return 'Welcome back! 👋';
+        if (profile?.firstName) return `Hello, ${profile.firstName}! 👋`;
+        return 'Welcome back! 👋';
     };
     const greeting = getGreeting();
 
     return (
         <>
-            {/* Edit Modal */}
             {editingOrder && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                    <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl">
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl border border-white/20 transition-colors duration-500">
                         <h3 className="text-xl font-black text-blue-900 mb-6">Edit Order</h3>
                         <div className="space-y-4">
                             <div>
@@ -561,163 +512,257 @@ export default function CustomerPage() {
             )}
 
             {/* Main Content */}
-            <main className="flex-1 bg-grid-pattern pt-8 pb-12">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-                        <header>
-                            <h1 className="text-4xl font-black text-blue-900 tracking-tight mb-2 selection:bg-blue-100">{greeting}</h1>
-                            <p className="text-blue-700/60 font-medium">Ready for some fresh and clean clothes today?</p>
-                        </header>
-                        <Link href="/customer/create-order" className="bg-blue-600 px-10 py-5 rounded-2xl text-white font-black uppercase tracking-widest shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all inline-flex items-center justify-center animate-pulse-glow group">
-                            <PlusCircle className="mr-2 h-5 w-5 transition-transform group-hover:rotate-90" />
-                            Create New Order
-                        </Link>
+            <main className="flex-1 bg-grid-pattern pt-12 pb-24 transition-colors duration-500">
+                <div className="max-w-7xl mx-auto px-6 lg:px-8">
+                    {/* Premium Hero Section */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="relative overflow-hidden glass-premium rounded-[3rem] p-10 md:p-16 mb-12 border border-white/20 shadow-glow"
+                    >
+                        {/* Background Floating Shapes */}
+                        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-blue-400/10 rounded-full blur-[100px] animate-pulse-glow" />
+                        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] animate-float-slow" />
+
+                        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-12">
+                            <div className="max-w-2xl">
+                                <motion.div
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: 0.2 }}
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600  text-[10px] font-black uppercase tracking-widest mb-6"
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    Premium Service Active
+                                </motion.div>
+                                <h1 className="text-5xl md:text-7xl font-black text-slate-900  tracking-tight mb-6 leading-[1.1]">
+                                    {greeting.split('!')[0]}<span className="text-blue-600 ">!</span>
+                                </h1>
+                                <p className="text-lg md:text-xl text-slate-600  font-medium mb-10 max-w-lg leading-relaxed">
+                                    Your laundry, handled with the precision of a modern startup. Experience high-end care with every pickup.
+                                </p>
+                                <div className="flex flex-wrap gap-4">
+                                    <Link href="/customer/create-order" className="group bg-blue-600  px-10 py-5 rounded-2xl text-white font-black uppercase tracking-widest shadow-premium hover:shadow-glow hover:-translate-y-1 active:scale-95 transition-all inline-flex items-center justify-center whitespace-nowrap overflow-hidden relative">
+                                        <div className="absolute inset-0 shimmer opacity-20" />
+                                        <PlusCircle className="mr-3 h-6 w-6 transition-transform group-hover:rotate-90" />
+                                        New Pickup Request
+                                    </Link>
+                                    <button className="bg-white/10  backdrop-blur-md px-10 py-5 rounded-2xl text-slate-900  font-black uppercase tracking-widest border border-white/20 hover:bg-white/20 transition-all">
+                                        Support
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Hero Illustration Wrapper */}
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 0.4 }}
+                                className="relative hidden lg:block"
+                            >
+                                <div className="absolute inset-0 bg-blue-600/20 rounded-full blur-[60px] animate-pulse" />
+                                <img
+                                    src="/laundry_illustration.png"
+                                    alt="Laundry Illustration"
+                                    className="relative z-10 w-80 h-80 object-contain drop-shadow-[0_35px_35px_rgba(0,0,0,0.25)] animate-float"
+                                />
+                            </motion.div>
+                        </div>
+                    </motion.div>
+
+                    {/* Quick Stats Bar */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
+                        {[
+                            { label: 'Active Tasks', value: activeOrders.length, icon: Zap, color: 'text-blue-500', bg: 'bg-blue-500/5' },
+                            { label: 'Service Level', value: 'Prime', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/5' },
+                            { label: 'Points', value: '1.2k', icon: Sparkles, color: 'text-amber-500', bg: 'bg-amber-500/5' },
+                            { label: 'Free Deliveries', value: '3', icon: Truck, color: 'text-purple-500', bg: 'bg-purple-500/5' },
+                        ].map((stat, i) => (
+                            <motion.div
+                                key={stat.label}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 * i }}
+                                className="glass-card rounded-[2rem] p-6 border border-white/20 flex items-center gap-4 hover-scale"
+                            >
+                                <div className={`h-12 w-12 rounded-2xl ${stat.bg} flex items-center justify-center`}>
+                                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
+                                    <p className="text-xl font-black text-slate-900 ">{stat.value}</p>
+                                </div>
+                            </motion.div>
+                        ))}
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* Current Orders */}
-                        <div className="glass-card rounded-[2.5rem] p-10 shadow-2xl shadow-blue-100/30 border border-white animate-fade-in-up" style={{ animationDelay: '200ms' }}>
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-black text-blue-900">Current Orders</h3>
-                                {activeOrders.length > 0 && (
-                                    <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-blue-100">
-                                        {activeOrders.length} Active
-                                    </span>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                        {/* Left Column: Management */}
+                        <div className="lg:col-span-2 space-y-10">
+                            {/* Current Orders Card */}
+                            <div className="glass-card rounded-[2.5rem] p-10 shadow-premium border border-white/20 relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-right from-blue-500 via-indigo-500 to-purple-500 opacity-50" />
+                                <div className="flex items-center justify-between mb-8">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-slate-900  mb-1">Live Updates</h3>
+                                        <p className="text-sm font-medium text-slate-500 italic">Managing your active laundry cycles</p>
+                                    </div>
+                                    {activeOrders.length > 0 && (
+                                        <div className="flex -space-x-2">
+                                            {[...Array(Math.min(activeOrders.length, 3))].map((_, i) => (
+                                                <div key={i} className="h-8 w-8 rounded-full border-2 border-white bg-blue-100 flex items-center justify-center text-[10px] font-black text-blue-600 ring-2 ring-blue-500/20">
+                                                    {i + 1}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                {loading ? (
+                                    <div className="flex items-center justify-center p-12">
+                                        <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full" />
+                                    </div>
+                                ) : activeOrders.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-16 px-8 bg-slate-50/50  rounded-premium border border-slate-200  transition-all hover:bg-slate-50 ">
+                                        <div className="h-20 w-20 bg-white rounded-[2rem] shadow-sm border border-blue-50 flex items-center justify-center mb-6">
+                                            <Sparkles className="h-10 w-10 text-blue-400 animate-pulse" />
+                                        </div>
+                                        <h4 className="text-xl font-black text-blue-900 mb-2">Stay Fresh & Clean</h4>
+                                        <p className="text-blue-700/50 font-medium text-center max-w-[280px]">Everything is clean! No active orders at the moment.</p>
+                                        <Link href="/customer/create-order" className="mt-8 px-6 py-3 bg-white rounded-xl border border-blue-100 text-blue-600 font-black text-sm uppercase tracking-wider shadow-sm hover:shadow-md transition-all flex items-center gap-1 group">
+                                            Start a new order <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                                        </Link>
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-6">
+                                        {activeOrders.map((order, idx) => {
+                                            const status = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+                                            const borderColor = status.color.split('-')[1] === 'blue' ? '#3b82f6' : status.color.split('-')[1] === 'amber' ? '#f59e0b' : status.color.split('-')[1] === 'purple' ? '#a855f7' : status.color.split('-')[1] === 'emerald' ? '#10b981' : '#f43f5e';
+                                            return (
+                                                <motion.div
+                                                    key={order._id}
+                                                    initial={{ opacity: 0, x: -20 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    transition={{ delay: 0.1 * idx }}
+                                                    className="group relative bg-white rounded-3xl p-6 border-l-8 border-r border-t border-b border-white/20 shadow-soft hover:shadow-premium transition-all overflow-hidden"
+                                                    style={{ borderLeftColor: borderColor }}
+                                                >
+                                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                                                        <div className="flex items-center gap-5">
+                                                            <div className={`h-14 w-14 rounded-2xl ${status.bg} flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform`}>
+                                                                <status.icon className={`h-7 w-7 ${status.color}`} />
+                                                            </div>
+                                                            <div>
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order ID</span>
+                                                                    <span className="text-[10px] font-black text-blue-600  bg-blue-50  px-2 py-0.5 rounded-full">#{order._id.slice(-6).toUpperCase()}</span>
+                                                                </div>
+                                                                <h4 className="text-lg font-black text-slate-900  group-hover:text-blue-600 transition-colors uppercase tracking-tight">
+                                                                    {order.productName || 'Laundry Service'}
+                                                                </h4>
+                                                                <div className="flex items-center gap-3 mt-1.5">
+                                                                    <div className="flex items-center gap-1.5 text-slate-500  text-xs font-bold">
+                                                                        <MapPin className="h-3.5 w-3.5" />
+                                                                        {order.pickupAddress || 'Pick up address'}
+                                                                    </div>
+                                                                    <div className="h-1 w-1 rounded-full bg-slate-300" />
+                                                                    <div className="text-xs font-black text-slate-900 ">
+                                                                        ฿{order.totalPrice.toLocaleString()}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-col items-end gap-3">
+                                                            <div className={`px-4 py-1.5 rounded-full ${status.bg} border-2 ${status.border.replace('text-', 'border-').replace('500', '500/20')} flex items-center gap-2`}>
+                                                                <div className={`h-2 w-2 rounded-full ${status.color.replace('text-', 'bg-')} animate-pulse`} />
+                                                                <span className={`text-[11px] font-black uppercase tracking-widest ${status.color}`}>{status.label}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => router.push(`/customer/orders/${order._id}`)}
+                                                                    className="p-2.5 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all border border-transparent hover:border-blue-100"
+                                                                    title="View Details"
+                                                                >
+                                                                    <ChevronRight className="h-5 w-5" />
+                                                                </button>
+                                                                {order.status === 'pending' && (
+                                                                    <button
+                                                                        onClick={() => deleteOrder(order._id)}
+                                                                        className="p-2.5 rounded-xl bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all border border-transparent hover:border-rose-100"
+                                                                        title="Cancel Order"
+                                                                    >
+                                                                        <Trash2 className="h-5 w-5" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Modern Progress Bar */}
+                                                    <div className="mt-6 pt-6 border-t border-slate-50 ">
+                                                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                                                            <span>Stage: {status.label}</span>
+                                                            <span>{['pending', 'assigned', 'picked_up', 'completed'].indexOf(order.status) * 25 + 25}%</span>
+                                                        </div>
+                                                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
+                                                            <motion.div
+                                                                initial={{ width: 0 }}
+                                                                animate={{ width: `${['pending', 'assigned', 'picked_up', 'completed'].indexOf(order.status) * 25 + 25}%` }}
+                                                                className={`h-full rounded-full ${status.color.replace('text-', 'bg-')} shadow-sm`}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </motion.div>
+                                            )
+                                        })}
+                                    </div>
                                 )}
                             </div>
-                            {loading ? (
-                                <div className="flex items-center justify-center p-12">
-                                    <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full" />
-                                </div>
-                            ) : activeOrders.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-16 px-8 bg-slate-50/50 rounded-3xl border-2 border-dashed border-blue-100/50 transition-all hover:bg-slate-50">
-                                    <div className="h-16 w-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
-                                        <Sparkles className="h-8 w-8 text-blue-400 animate-pulse" />
-                                    </div>
-                                    <h4 className="text-lg font-black text-blue-900 mb-1">Stay Fresh & Clean</h4>
-                                    <p className="text-blue-700/50 font-medium text-center max-w-[240px]">Everything is clean! No active orders at the moment.</p>
-                                    <Link href="/customer/create-order" className="mt-6 text-blue-600 font-bold hover:underline flex items-center gap-1 group">
-                                        Start a new order <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                                    </Link>
-                                </div>
-                            ) : (
-                                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                                    {activeOrders.map((order) => {
-                                        const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
-                                        const isPending = order.status === 'pending';
-                                        return (
-                                            <div key={order._id} className={`p-5 rounded-2xl border ${cfg.bg} transition-all hover:shadow-md`}>
-                                                <div className="flex items-start justify-between mb-3">
-                                                    <div className="flex-1 min-w-0">
-                                                        <h4 className="font-black text-blue-900 truncate">{order.productName}</h4>
-                                                        <p className="text-xs text-blue-500 mt-1">
-                                                            {new Date(order.createdAt).toLocaleDateString('th-TH', {
-                                                                day: 'numeric', month: 'short', year: 'numeric',
-                                                                hour: '2-digit', minute: '2-digit',
-                                                            })}
-                                                        </p>
-                                                    </div>
-                                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black ${cfg.color} ${cfg.bg} relative overflow-hidden group`}>
-                                                        {isPending && (
-                                                            <span className="absolute left-0 top-0 h-full w-1 bg-amber-400 animate-pulse" />
-                                                        )}
-                                                        <cfg.icon className={`h-3.5 w-3.5 ${isPending ? 'animate-bounce' : ''}`} /> {cfg.label}
-                                                    </span>
-                                                </div>
-                                                {order.pickupAddress && (
-                                                    <p className="text-sm text-blue-700/60 mb-2">
-                                                        <span className="font-bold">Pickup:</span> {order.pickupAddress}
-                                                    </p>
-                                                )}
-                                                <div className="flex items-center justify-between mt-3">
-                                                    <span className="text-xs font-bold text-blue-500">
-                                                        {order.pickupType === 'schedule' && order.pickupAt
-                                                            ? `Scheduled: ${new Date(order.pickupAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
-                                                            : 'Pickup Now'}
-                                                    </span>
-                                                    {order.totalPrice > 0 && (
-                                                        <span className="text-sm font-black text-blue-900">฿{order.totalPrice.toLocaleString()}</span>
-                                                    )}
-                                                </div>
-                                                {/* Edit / Delete — only for pending orders */}
-                                                {isPending && (
-                                                    <div className="flex gap-2 mt-4 pt-3 border-t border-amber-200">
-                                                        <button
-                                                            onClick={() => openEdit(order)}
-                                                            className="flex-1 rounded-xl border border-blue-200 px-3 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-50 transition-all flex items-center justify-center gap-1.5"
-                                                        >
-                                                            <Edit3 className="h-3.5 w-3.5" /> Edit
-                                                        </button>
-                                                        <button
-                                                            onClick={() => deleteOrder(order._id)}
-                                                            disabled={deletingId === order._id}
-                                                            className="flex-1 rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-black text-rose-600 hover:bg-rose-50 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" /> {deletingId === order._id ? 'Deleting…' : 'Delete'}
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
                         </div>
 
-                        {/* Right column */}
-                        <div className="space-y-8">
-                            {/* Service Promos */}
-                            <div className="glass-card rounded-[2.5rem] p-10 shadow-2xl shadow-blue-100/30 border border-white animate-fade-in-up" style={{ animationDelay: '300ms' }}>
-                                <h3 className="text-xl font-black text-blue-900 mb-6">Service Promos</h3>
-                                <div className="grid gap-4">
-                                    <div className="group p-6 rounded-3xl bg-blue-600 text-white relative overflow-hidden shadow-xl shadow-blue-200/50 transition-all hover:scale-[1.02] active:scale-[0.98]">
-                                        <div className="absolute -top-4 -right-4 h-24 w-24 bg-white/10 rounded-full blur-2xl transition-all group-hover:scale-150"></div>
-                                        <div className="flex items-start justify-between mb-4">
-                                            <div className="h-12 w-12 bg-white/20 rounded-2xl flex items-center justify-center">
-                                                <Ticket className="h-6 w-6 text-white" />
-                                            </div>
-                                            <span className="text-[10px] font-black uppercase tracking-tighter bg-white/30 px-2 py-1 rounded-lg">New Offer</span>
-                                        </div>
-                                        <h4 className="text-lg font-black mb-1">Weekend Special</h4>
-                                        <p className="text-white/80 text-sm font-bold">20% OFF for all drying services!</p>
+                        <div className="space-y-10">
+                            <div className="glass-card rounded-[2.5rem] p-8 shadow-premium border border-white/20 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-colors" />
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-xl font-black text-slate-900  uppercase tracking-tight">Member Rewards</h3>
+                                    <div className="p-2 rounded-xl bg-blue-50 ">
+                                        <TrendingUp className="h-5 w-5 text-blue-600" />
                                     </div>
-                                    <div className="group p-6 rounded-3xl bg-sky-500 text-white relative overflow-hidden shadow-xl shadow-sky-200/50 transition-all hover:scale-[1.02] active:scale-[0.98]">
-                                        <div className="absolute -bottom-4 -left-4 h-24 w-24 bg-white/10 rounded-full blur-2xl transition-all group-hover:scale-150"></div>
-                                        <div className="flex items-start justify-between mb-4">
-                                            <div className="h-12 w-12 bg-white/20 rounded-2xl flex items-center justify-center">
-                                                <Truck className="h-6 w-6 text-white" />
-                                            </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="relative overflow-hidden p-6 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg animate-gradient-shift" style={{ backgroundSize: '200% 200%' }}>
+                                        <div className="absolute top-0 right-0 opacity-10"> <Zap className="h-24 w-24 -mr-6 -mt-6" /> </div>
+                                        <div className="relative z-10">
+                                            <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full inline-block text-[10px] font-black uppercase tracking-widest mb-3 border border-white/10"> Limited Offer </div>
+                                            <h4 className="text-2xl font-black mb-1">Weekend Special</h4>
+                                            <p className="text-blue-100 text-sm font-medium mb-4">20% OFF for all drying services! Use code "FRESH20"</p>
+                                            <button className="w-full py-3 bg-white text-blue-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-sm hover:shadow-glow transition-all active:scale-95"> Claim Now </button>
                                         </div>
-                                        <h4 className="text-lg font-black mb-1">Free Delivery</h4>
-                                        <p className="text-white/80 text-sm font-bold">For orders over ฿500. Order now!</p>
+                                    </div>
+                                    <div className="relative overflow-hidden p-6 rounded-3xl bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-lg">
+                                        <div className="absolute bottom-0 left-0 opacity-10"> <Truck className="h-20 w-20 -ml-4 -mb-4" /> </div>
+                                        <div className="relative z-10">
+                                            <h4 className="text-xl font-black mb-1">Free Delivery</h4>
+                                            <p className="text-white/80 text-sm font-bold mb-4">For orders over ฿500. Limited time offer!</p>
+                                            <button className="w-full py-2.5 bg-white/20 backdrop-blur-md text-white border border-white/30 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all hover:bg-white/30"> Details </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Recent Completed */}
-                            {orders.filter(o => o.status === 'completed').length > 0 && (
-                                <div className="glass-card rounded-[2.5rem] p-10 shadow-2xl shadow-blue-100/30 border border-white animate-fade-in-up" style={{ animationDelay: '400ms' }}>
-                                    <h3 className="text-xl font-black text-blue-900 mb-6">Recently Completed</h3>
-                                    <div className="space-y-3">
-                                        {orders.filter(o => o.status === 'completed').slice(0, 3).map((order) => (
-                                            <div key={order._id} className="flex items-center justify-between p-4 rounded-2xl bg-green-50/50 border border-green-100 transition-all hover:bg-green-50 group">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="h-10 w-10 bg-white rounded-xl shadow-sm border border-green-100 flex items-center justify-center">
-                                                        <Package className="h-5 w-5 text-green-600" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-green-900 text-sm">{order.productName}</h4>
-                                                        <p className="text-xs text-green-700/60 font-medium">
-                                                            {new Date(order.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <CheckCircle className="h-5 w-5 text-green-500 transition-transform group-hover:scale-110" />
-                                            </div>
-                                        ))}
-                                    </div>
+                            {/* Referral Card */}
+                            <motion.div
+                                whileHover={{ y: -5 }}
+                                className="glass-card rounded-[2.5rem] p-8 bg-blue-50 border-2 border-dashed border-blue-200 text-center"
+                            >
+                                <div className="h-16 w-16 bg-white rounded-2xl shadow-soft mx-auto mb-6 flex items-center justify-center">
+                                    <Share2 className="h-8 w-8 text-blue-600" />
                                 </div>
-                            )}
+                                <h4 className="text-xl font-black text-slate-900  mb-2 uppercase italic">Invite Friends</h4>
+                                <p className="text-sm font-medium text-slate-500 mb-6">Give ฿100, Get ฿100 for every friend who joins.</p>
+                                <button className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:shadow-premium transition-all"> Share Link </button>
+                            </motion.div>
                         </div>
                     </div>
                 </div>

@@ -1,10 +1,34 @@
 "use client";
 
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  ArrowLeft,
+  Box,
+  Camera,
+  CheckCircle,
+  ChevronRight,
+  Clock,
+  Info,
+  MapPin,
+  Navigation,
+  Phone,
+  Plus,
+  Calendar,
+  Cloudy,
+  Wind,
+  Thermometer,
+  Waves,
+  Zap,
+  ShieldCheck,
+  CreditCard,
+  Sparkles,
+  XCircle
+} from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { motion, AnimatePresence } from "framer-motion";
 
 type CreateOrderPayload = {
   productName: string;
@@ -34,65 +58,50 @@ type SavedAddress = {
   pickupAt?: string | null;
 };
 
-type LatLng = { lat: number; lng: number };
-
-type LeafletMarker = {
-  addTo: (map: LeafletMap) => LeafletMarker;
-  on: (event: string, handler: () => void) => void;
-  getLatLng: () => LatLng;
-  setLatLng: (latLng: LatLng) => void;
-};
-
-type LeafletMap = {
-  on: (event: string, handler: (event: { latlng: LatLng }) => void) => void;
-  panTo: (latLng: [number, number]) => void;
-  remove: () => void;
-};
-
-type LeafletLib = {
-  map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
-  tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
-  marker: (latLng: [number, number], options: { draggable: boolean }) => LeafletMarker;
-};
+import { loadLeaflet, LeafletLib, LeafletMap, LeafletMarker, LatLng } from "@/lib/leaflet-loader";
 
 const DEFAULT_PICKUP = { lat: 13.7563, lng: 100.5018 };
 
-async function loadLeaflet() {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as { L?: LeafletLib };
-  if (w.L) return w.L;
+// Local loader removed
 
-  if (!document.querySelector('link[data-leaflet="true"]')) {
-    const css = document.createElement("link");
-    css.rel = "stylesheet";
-    css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    css.setAttribute("data-leaflet", "true");
-    document.head.appendChild(css);
+const LAUNDRY_SERVICES = [
+  {
+    id: 'wash_fold',
+    title: 'Wash & Fold',
+    description: 'Everyday wear, expertly cleaned and neatly folded.',
+    icon: Waves,
+    color: 'text-blue-500',
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    priceEstimate: 'From ฿50/kg'
+  },
+  {
+    id: 'dry_clean',
+    title: 'Dry Clean',
+    description: 'Delicate care for suits, silks, and formal wear.',
+    icon: Wind,
+    color: 'text-indigo-500',
+    bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+    priceEstimate: 'From ฿120/pc'
+  },
+  {
+    id: 'ironing',
+    title: 'Ironing Only',
+    description: 'Crisp, professional finish for your shirts and linens.',
+    icon: Thermometer,
+    color: 'text-amber-500',
+    bg: 'bg-amber-50 dark:bg-amber-900/20',
+    priceEstimate: 'From ฿20/pc'
+  },
+  {
+    id: 'express',
+    title: 'Express Plus',
+    description: 'Prioritized handling. Ready in under 12 hours.',
+    icon: Zap,
+    color: 'text-rose-500',
+    bg: 'bg-rose-50 dark:bg-rose-900/20',
+    priceEstimate: '฿100 Surcharge'
   }
-
-  await new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
-    if (existingScript) {
-      if ((window as any).L) {
-        resolve();
-        return;
-      }
-      existingScript.addEventListener("load", () => resolve());
-      existingScript.addEventListener("error", () => reject(new Error("Failed to load leaflet")));
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.async = true;
-    script.setAttribute("data-leaflet", "true");
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load leaflet"));
-    document.body.appendChild(script);
-  });
-
-  return (window as unknown as { L?: LeafletLib }).L ?? null;
-}
+];
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -101,6 +110,8 @@ export default function CreateOrderPage() {
   const markerRef = useRef<LeafletMarker | null>(null);
   const hasTriedAutoLocationRef = useRef(false);
 
+  const [currentStep, setCurrentStep] = useState(1);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -155,6 +166,14 @@ export default function CreateOrderPage() {
       ),
     [productName, contactPhone, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
   );
+
+  const handleServiceSelect = (serviceId: string) => {
+    setSelectedServiceId(serviceId);
+    const service = LAUNDRY_SERVICES.find(s => s.id === serviceId);
+    if (service) {
+      setProductName(service.title);
+    }
+  };
 
   useEffect(() => {
     // Check if user is authenticated
@@ -331,56 +350,24 @@ export default function CreateOrderPage() {
     try {
       setIsLoading(true);
 
-      // Use FormData when images are present to avoid payload too large error
-      if (basketPhotos.length > 0) {
-        const formData = new FormData();
-        formData.append('productName', productName.trim());
-        if (description.trim()) formData.append('description', description.trim());
-        formData.append('contactPhone', contactPhone.trim() || '');
-        formData.append('pickupLatitude', String(pickupLat));
-        formData.append('pickupLongitude', String(pickupLng));
-        if (pickupAddress.trim()) formData.append('pickupAddress', pickupAddress.trim());
-        formData.append('pickupType', pickupType);
-        if (pickupAt) formData.append('pickupAt', pickupAt);
+      const images = await filesToBase64(basketPhotos);
 
-        // Append images as files
-        basketPhotos.forEach((file, index) => {
-          formData.append(`images`, file);
-        });
+      const payload: any = {
+        productName: productName.trim(),
+        description: description.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
+        pickupLatitude: pickupLat,
+        pickupLongitude: pickupLng,
+        pickupAddress: pickupAddress.trim() || undefined,
+        pickupType,
+        pickupAt,
+        images,
+      };
 
-        const token = localStorage.getItem('access_token');
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000'}/api/customers/orders`,
-          {
-            method: 'POST',
-            headers: {
-              ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-            },
-            body: formData,
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || 'Failed to create order');
-        }
-      } else {
-        const payload: CreateOrderPayload = {
-          productName: productName.trim(),
-          description: description.trim() || undefined,
-          contactPhone: contactPhone.trim() || undefined,
-          pickupLatitude: pickupLat,
-          pickupLongitude: pickupLng,
-          pickupAddress: pickupAddress.trim() || undefined,
-          pickupType,
-          pickupAt,
-        };
-
-        await apiFetch("/customers/orders", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      }
+      await apiFetch("/customers/orders", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
 
       if (savePickup && pickupAddress.trim()) {
         await apiFetch('/customers/addresses', {
@@ -433,309 +420,493 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div className="p-12">
-      <main className="mx-auto w-full max-w-3xl rounded-[2rem] border border-white bg-white p-8 shadow-2xl shadow-blue-100/50">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-3xl font-black tracking-tight">Create Order</h1>
-          <Link href="/customer" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50">
-            Back
-          </Link>
-        </div>
-
-        <p className="mb-6 text-sm font-medium text-blue-700/70">
-          Fill in order details. You can open Map Test to help choose coordinates.
-        </p>
-
-        <div className="mb-6 flex gap-3">
-          <a
-            href="/maptest"
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-700"
-          >
-            Open Map Test
-          </a>
-          <button
-            type="button"
-            onClick={useCurrentLocation}
-            className="rounded-xl border border-emerald-200 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-50"
-          >
-            Use Current Location
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPickupLatitude(String(DEFAULT_PICKUP.lat));
-              setPickupLongitude(String(DEFAULT_PICKUP.lng));
-            }}
-            className="rounded-xl border border-blue-200 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700 hover:bg-blue-50"
-          >
-            Use Mock Coordinates
-          </button>
-        </div>
-
-        <div className="mb-6 rounded-2xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-black uppercase tracking-widest text-blue-700">📍 Saved Pickup Addresses</p>
+    <div className="min-h-screen bg-grid-pattern pb-20 pt-8 px-4 sm:px-6 lg:px-8 dark:bg-slate-950">
+      <div className="mx-auto max-w-5xl animate-blur-in">
+        {/* Header Section */}
+        <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6 px-4">
+          <div className="space-y-1">
             <Link
-              href="/customer/settings"
-              className="text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors"
+              href="/customer"
+              className="group inline-flex items-center text-sm font-bold text-blue-500 hover:text-blue-700 transition-colors mb-2"
             >
-              Manage Addresses →
+              <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
+              Back to Dashboard
             </Link>
+            <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+              Create New <span className="text-blue-600">Order</span>
+            </h1>
+            <p className="text-slate-500 font-medium max-w-lg italic">
+              Experience the future of clean. Complete {currentStep}/4 steps.
+            </p>
           </div>
-          {isLoadingSaved ? (
-            <div className="flex items-center gap-2 py-3">
-              <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
-              <p className="text-sm text-blue-700/60">Loading saved places...</p>
-            </div>
-          ) : savedAddresses.length === 0 ? (
-            <div className="flex flex-col items-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-              <span className="text-2xl mb-2">📭</span>
-              <p className="text-sm text-blue-700/60 mb-2">No saved addresses yet</p>
-              <Link
-                href="/customer/settings"
-                className="text-xs font-bold text-blue-600 hover:text-blue-700 underline underline-offset-2"
-              >
-                Add addresses in Profile Settings
-              </Link>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {savedAddresses.map((item, index) => {
-                const isSelected =
-                  pickupAddress === (item.address ?? '') &&
-                  pickupLatitude === String(item.latitude) &&
-                  pickupLongitude === String(item.longitude);
 
-                return (
+          <div className="flex gap-3">
+            <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100 animate-pulse-glow">
+              <ShieldCheck className="h-5 w-5 text-blue-600" />
+              <span className="text-[10px] font-black text-blue-900 dark:text-blue-300 uppercase tracking-widest">Premium Care Active</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Step Indicator */}
+        <div className="px-4 mb-12">
+          <div className="relative flex justify-between">
+            {/* Background Line */}
+            <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 dark:bg-slate-800 -translate-y-1/2 z-0" />
+
+            {/* Progress Line */}
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${((currentStep - 1) / 3) * 100}%` }}
+              className="absolute top-1/2 left-0 h-0.5 bg-blue-600 -translate-y-1/2 z-0"
+            />
+
+            {[1, 2, 3, 4].map((step) => (
+              <div key={step} className="relative z-10 flex flex-col items-center gap-2">
+                <motion.div
+                  initial={false}
+                  animate={{
+                    scale: currentStep === step ? 1.2 : 1,
+                    backgroundColor: currentStep >= step ? '#2563eb' : (currentStep < step ? '#f1f5f9' : '#ffffff'),
+                    borderColor: currentStep >= step ? '#2563eb' : '#e2e8f0'
+                  }}
+                  className={`h-10 w-10 rounded-full border-2 flex items-center justify-center text-sm font-black transition-colors ${currentStep >= step ? 'text-white' : 'text-slate-400 dark:bg-slate-900'
+                    }`}
+                >
+                  {currentStep > step ? <CheckCircle className="h-5 w-5" /> : step}
+                </motion.div>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${currentStep >= step ? 'text-blue-600' : 'text-slate-400'
+                  }`}>
+                  {step === 1 ? 'Service' : step === 2 ? 'Details' : step === 3 ? 'Schedule' : 'Location'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {currentStep === 1 && (
+            <motion.div
+              key="step1"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="px-4"
+            >
+              <div className="glass-card rounded-[3rem] p-10 border border-white/20 shadow-premium relative overflow-hidden">
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Select Service</h2>
+                <p className="text-slate-500 text-sm mb-10">Tailored care for every garment you own.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {LAUNDRY_SERVICES.map((service) => (
+                    <button
+                      key={service.id}
+                      onClick={() => handleServiceSelect(service.id)}
+                      className={`group relative text-left p-8 rounded-[2.5rem] border-2 transition-all hover:shadow-premium active:scale-95 ${selectedServiceId === service.id
+                        ? 'border-blue-600 bg-blue-50'
+                        : 'border-slate-100 bg-white shadow-soft'
+                        }`}
+                    >
+                      <div className={`h-14 w-14 rounded-2xl ${service.bg} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
+                        <service.icon className={`h-7 w-7 ${service.color}`} />
+                      </div>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">{service.title}</h3>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-6 leading-relaxed">
+                        {service.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[11px] font-black uppercase tracking-widest ${service.color}`}>
+                          {service.priceEstimate}
+                        </span>
+                        {selectedServiceId === service.id && (
+                          <div className="h-6 w-6 bg-blue-600 rounded-full flex items-center justify-center">
+                            <CheckCircle className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-12 flex justify-end">
                   <button
-                    key={`${item.label}-${index}`}
-                    type="button"
-                    onClick={() => {
-                      setPickupAddress(item.address ?? '');
-                      if (item.latitude != null && item.longitude != null) {
-                        setPickupLatitude(String(item.latitude));
-                        setPickupLongitude(String(item.longitude));
-                      }
-                      if (typeof item.contactPhone === 'string' && item.contactPhone.trim()) {
-                        setContactPhone(item.contactPhone);
-                      }
-                      if (item.pickupType === 'schedule') {
-                        setPickupType('schedule');
-                        if (item.pickupAt) {
-                          const d = new Date(item.pickupAt);
-                          if (!Number.isNaN(d.getTime())) {
-                            setPickupDate(d.toISOString().slice(0, 10));
-                            setPickupTime(d.toISOString().slice(11, 16));
-                          }
-                        }
-                      } else {
-                        setPickupType('now');
-                      }
-                    }}
-                    className={`relative text-left p-3 rounded-xl border-2 transition-all ${isSelected
-                      ? 'border-blue-500 bg-blue-50 shadow-md shadow-blue-100'
-                      : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/50'
-                      }`}
+                    disabled={!selectedServiceId}
+                    onClick={() => setCurrentStep(2)}
+                    className="group px-10 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-[2rem] font-black uppercase tracking-widest text-sm flex items-center gap-3 hover:shadow-premium transition-all active:scale-95 disabled:opacity-50"
                   >
-                    <div className="flex items-start gap-2">
-                      <span className="text-base mt-0.5">{item.isDefault ? '⭐' : '📍'}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="font-bold text-sm text-blue-900 truncate">{item.label}</span>
-                          {item.isDefault && (
-                            <span className="flex-shrink-0 text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
-                              Default
-                            </span>
-                          )}
-                          {isSelected && (
-                            <span className="flex-shrink-0 text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full">
-                              ✓ Selected
-                            </span>
-                          )}
+                    Next Details <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {currentStep === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="px-4"
+            >
+              <div className="glass-card rounded-[3rem] p-10 border border-white/20 shadow-premium">
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Garment Details</h2>
+                <p className="text-slate-500 text-sm mb-10">Describe what you're sending so we can treat it with care.</p>
+
+                <div className="space-y-8">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Custom Order Name</label>
+                    <input
+                      required
+                      value={productName}
+                      onChange={(e) => setProductName(e.target.value)}
+                      className="w-full rounded-[2rem] border border-slate-100 bg-white px-8 py-5 text-sm font-bold placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-soft"
+                      placeholder="e.g., Silk Shirt & Wool Trousers"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Visualization (Upload Photos)</label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => setBasketPhotos(Array.from(e.target.files ?? []))}
+                        className="hidden"
+                        id="basket-photos"
+                      />
+                      <label
+                        htmlFor="basket-photos"
+                        className="flex flex-col items-center justify-center w-full aspect-video md:aspect-auto md:h-48 rounded-[2.5rem] border-2 border-dashed border-slate-200 bg-white hover:bg-blue-50/50 hover:border-blue-400 cursor-pointer transition-all group"
+                      >
+                        <Camera className="h-10 w-10 text-slate-300 group-hover:text-blue-500 transition-colors mb-3" />
+                        <span className="text-sm font-bold text-slate-500 group-hover:text-blue-700">Drop images or click to browse</span>
+                        <span className="text-[10px] font-medium text-slate-400 mt-2 italic">Max 5MB per image. JPG, PNG supported.</span>
+                        {basketPhotos.length > 0 && (
+                          <div className="mt-4 px-4 py-1.5 bg-blue-600 rounded-full text-[10px] font-black text-white uppercase tracking-widest">
+                            {basketPhotos.length} Files Selected
+                          </div>
+                        )}
+                      </label>
+                    </div>
+
+                    {basketPhotoPreviews.length > 0 && (
+                      <div className="mt-6 grid grid-cols-5 gap-4">
+                        {basketPhotoPreviews.map((url, i) => (
+                          <div key={i} className="aspect-square rounded-2xl overflow-hidden border-2 border-white dark:border-slate-800 shadow-soft relative group hover:scale-105 transition-transform">
+                            <img src={url} alt="Preview" className="h-full w-full object-cover" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Sparkles className="h-5 w-5 text-white" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Special Instructions</label>
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className="w-full rounded-[2rem] border border-slate-100 bg-white px-8 py-5 text-sm font-bold placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-soft resize-none"
+                      placeholder="e.g., Please treat the wine stain on the white collar carefully."
+                      rows={4}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-12 flex justify-between gap-4">
+                  <button
+                    onClick={() => setCurrentStep(1)}
+                    className="px-10 py-5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-[2rem] font-black uppercase tracking-widest text-sm transition-all active:scale-95"
+                  >
+                    Back
+                  </button>
+                  <button
+                    disabled={!productName.trim()}
+                    onClick={() => setCurrentStep(3)}
+                    className="group px-10 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-[2rem] font-black uppercase tracking-widest text-sm flex items-center gap-3 hover:shadow-premium transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    Pickup Time <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {currentStep === 3 && (
+            <motion.div
+              key="step3"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="px-4"
+            >
+              <div className="glass-card rounded-[3rem] p-10 border border-white/20 shadow-premium">
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Schedule & Contact</h2>
+                <p className="text-slate-500 text-sm mb-10">When should our rider arrive at your doorstep?</p>
+
+                <div className="space-y-10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <button
+                      type="button"
+                      onClick={() => setPickupType('now')}
+                      className={`flex items-center gap-6 p-8 rounded-[2.5rem] border-2 transition-all ${pickupType === 'now'
+                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/10 shadow-premium'
+                        : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900'
+                        }`}
+                    >
+                      <div className={`h-16 w-16 rounded-[1.5rem] flex items-center justify-center ${pickupType === 'now' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                        <Navigation className="h-7 w-7" />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-black text-slate-900 dark:text-white uppercase tracking-tight">Pickup Now</div>
+                        <div className="text-xs font-bold text-slate-500">Under 30 Minutes</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPickupType('schedule')}
+                      className={`flex items-center gap-6 p-8 rounded-[2.5rem] border-2 transition-all ${pickupType === 'schedule'
+                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/10 shadow-premium'
+                        : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900'
+                        }`}
+                    >
+                      <div className={`h-16 w-16 rounded-[1.5rem] flex items-center justify-center ${pickupType === 'schedule' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                        <Calendar className="h-7 w-7" />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-black text-slate-900 dark:text-white uppercase tracking-tight">Schedule</div>
+                        <div className="text-xs font-bold text-slate-500">Pick a custom window</div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {pickupType === 'schedule' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="grid grid-cols-2 gap-6 p-8 rounded-[2.5rem] bg-slate-50 border border-slate-100"
+                    >
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Date</label>
+                        <input
+                          type="date"
+                          value={pickupDate}
+                          onChange={(e) => setPickupDate(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 px-6 py-4 text-sm font-bold bg-white dark:bg-slate-900 focus:border-blue-500 focus:outline-none transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Time Window</label>
+                        <input
+                          type="time"
+                          value={pickupTime}
+                          onChange={(e) => setPickupTime(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 px-6 py-4 text-sm font-bold bg-white dark:bg-slate-900 focus:border-blue-500 focus:outline-none transition-all"
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Contact Details</label>
+                    <div className="relative group">
+                      <Phone className="absolute left-6 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                      <input
+                        required
+                        value={contactPhone}
+                        onChange={(e) => setContactPhone(e.target.value)}
+                        className="w-full rounded-[2rem] border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 pl-16 pr-8 py-5 text-sm font-black placeholder:text-slate-400 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none transition-all shadow-soft"
+                        placeholder="08X XXX XXXX"
+                      />
+                    </div>
+                    <p className="mt-3 text-[10px] font-bold text-slate-400 italic px-4">Our rider will call this number upon arrival.</p>
+                  </div>
+                </div>
+
+                <div className="mt-12 flex justify-between gap-4">
+                  <button
+                    onClick={() => setCurrentStep(2)}
+                    className="px-10 py-5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-[2rem] font-black uppercase tracking-widest text-sm transition-all active:scale-95"
+                  >
+                    Back
+                  </button>
+                  <button
+                    disabled={!contactPhone.trim() || (pickupType === 'schedule' && (!pickupDate || !pickupTime))}
+                    onClick={() => setCurrentStep(4)}
+                    className="group px-10 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-[2rem] font-black uppercase tracking-widest text-sm flex items-center gap-3 hover:shadow-premium transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    Final: Location <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {currentStep === 4 && (
+            <motion.div
+              key="step4"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="px-4"
+            >
+              <div className="glass-card rounded-[3rem] p-10 border border-white/20 shadow-premium">
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Final Confirmation</h2>
+                <p className="text-slate-500 text-sm mb-10">Verify your location and complete your request.</p>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                  <div className="space-y-8">
+                    <div className="rounded-[2.5rem] border-2 border-slate-100 overflow-hidden shadow-soft relative z-0">
+                      <div ref={mapContainerRef} className="h-64 sm:h-80 w-full" />
+                      <div className="absolute top-4 left-4 z-10">
+                        <div className="glass-frost px-4 py-2 rounded-full text-[10px] font-black text-slate-900 uppercase tracking-widest shadow-premium border border-white/20">
+                          Exact Pickup Point
                         </div>
-                        {item.address && (
-                          <p className="text-xs text-blue-700/60 truncate">{item.address}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={useCurrentLocation}
+                        className="absolute bottom-4 right-4 z-10 p-4 rounded-2xl bg-white text-blue-600 shadow-premium hover:scale-110 active:scale-95 transition-all border border-slate-100"
+                        title="Use My Location"
+                      >
+                        <Navigation className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Detailed Address / Note</label>
+                      <input
+                        value={pickupAddress}
+                        onChange={(e) => setPickupAddress(e.target.value)}
+                        className="w-full rounded-2xl border border-slate-100 bg-white px-6 py-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-soft"
+                        placeholder="e.g. Lobby, Building A, 2nd Floor"
+                      />
+
+                      <div className="flex items-center gap-4 bg-blue-50/50 p-5 rounded-2xl border border-blue-100/50">
+                        <label className="flex flex-1 items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={savePickup}
+                            onChange={(e) => setSavePickup(e.target.checked)}
+                            className="h-6 w-6 rounded-xl border-slate-300 accent-blue-600 transition-all"
+                          />
+                          <span className="text-[11px] font-black text-blue-900 uppercase tracking-widest">Save this place</span>
+                        </label>
+                        {savePickup && (
+                          <motion.input
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            value={saveLabel}
+                            onChange={(e) => setSaveLabel(e.target.value)}
+                            className="flex-1 bg-white dark:bg-slate-900 rounded-xl px-4 py-2 text-xs font-bold border border-blue-200 dark:border-blue-800 outline-none focus:border-blue-500"
+                            placeholder="Label (e.g. Office)"
+                          />
                         )}
                       </div>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200">
-          <div ref={mapContainerRef} className="h-64 w-full" />
-        </div>
-        <p className="-mt-3 mb-5 text-xs font-semibold text-blue-700/70">Drag marker or click on map to change pickup location.</p>
-
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <div>
-            <label className="mb-1 block text-sm font-bold">Product Name</label>
-            <input
-              required
-              value={productName}
-              onChange={(event) => setProductName(event.target.value)}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-              placeholder="Laundry bag #1"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-bold">Basket Photos</label>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) => setBasketPhotos(Array.from(event.target.files ?? []))}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-            />
-            {basketPhotos.length > 0 && (
-              <p className="mt-1 text-xs font-semibold text-blue-700/70">{basketPhotos.length} file(s) selected</p>
-            )}
-            {basketPhotoPreviews.length > 0 && (
-              <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-                {basketPhotoPreviews.map((previewUrl, index) => (
-                  <div key={`${previewUrl}-${index}`} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                    <img
-                      src={previewUrl}
-                      alt={`Basket preview ${index + 1}`}
-                      className="h-24 w-full object-cover"
-                    />
                   </div>
-                ))}
+
+                  <div className="space-y-8">
+                    <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100">
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 border-b border-slate-200 pb-4">Order Summary</h3>
+                      <div className="space-y-5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-500">Service</span>
+                          <span className="text-sm font-black text-slate-900 uppercase">{LAUNDRY_SERVICES.find(s => s.id === selectedServiceId)?.title}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-500">Pickup Mode</span>
+                          <span className="text-sm font-black text-slate-900 uppercase">{pickupType === 'now' ? 'ASAP' : 'Schedule'}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-500">Contact</span>
+                          <span className="text-sm font-black text-slate-900 tracking-widest">{contactPhone}</span>
+                        </div>
+                        <div className="pt-4 mt-4 border-t border-dashed border-slate-200 flex items-center justify-between">
+                          <span className="text-xs font-black text-blue-600 uppercase tracking-widest">Est. Collection</span>
+                          <div className="text-right">
+                            <span className="text-lg font-black text-slate-900 italic">Free Delivery</span>
+                            <div className="text-[10px] font-bold text-slate-400">T&C Apply *</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {isLoadingSaved && (
+                        <div className="flex items-center gap-3 px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 animate-pulse">
+                          <div className="h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest uppercase">Syncing saved places...</span>
+                        </div>
+                      )}
+                      {savedAddresses.length > 0 && !isLoadingSaved && (
+                        <div>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Quick Select Saved Place</label>
+                          <div className="grid grid-cols-2 gap-3 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                            {savedAddresses.map((item, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setPickupAddress(item.address ?? '');
+                                  setPickupLatitude(String(item.latitude));
+                                  setPickupLongitude(String(item.longitude));
+                                  if (item.contactPhone) setContactPhone(item.contactPhone);
+                                }}
+                                className="text-left p-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                              >
+                                <div className="font-black text-[10px] text-slate-900 dark:text-white uppercase truncate">{item.label}</div>
+                                <div className="text-[9px] text-slate-400 truncate mt-0.5">{item.address}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-12 flex flex-col gap-6">
+                  {error && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3 rounded-2xl bg-rose-50 border border-rose-100 p-5">
+                      <XCircle className="text-rose-600 h-5 w-5" />
+                      <p className="text-sm font-bold text-rose-700">{error}</p>
+                    </motion.div>
+                  )}
+                  {success && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3 rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
+                      <CheckCircle className="text-emerald-600 h-5 w-5" />
+                      <p className="text-sm font-bold text-emerald-700">{success}</p>
+                    </motion.div>
+                  )}
+
+                  <div className="flex justify-between gap-4">
+                    <button
+                      onClick={() => setCurrentStep(3)}
+                      className="px-10 py-5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-[2rem] font-black uppercase tracking-widest text-sm transition-all active:scale-95 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={(e: React.MouseEvent) => onSubmit(e as any)}
+                      disabled={!canSubmit || isLoading}
+                      className="group relative flex-1 px-10 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-sm flex items-center justify-center gap-3 hover:bg-blue-700 hover:shadow-glow transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {isLoading ? "Synchronizing Order..." : "Finalize & Send Request"}
+                      {!isLoading && <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />}
+                      {!isLoading && <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-bold">Description</label>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-              placeholder="Optional details"
-              rows={3}
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-bold">Contact Phone</label>
-            <input
-              required
-              value={contactPhone}
-              onChange={(event) => setContactPhone(event.target.value)}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-              placeholder="e.g. 0812345678"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-bold">Pickup Latitude</label>
-              <input
-                required
-                value={pickupLatitude}
-                onChange={(event) => setPickupLatitude(event.target.value)}
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-bold">Pickup Longitude</label>
-              <input
-                required
-                value={pickupLongitude}
-                onChange={(event) => setPickupLongitude(event.target.value)}
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-bold">Pickup Address</label>
-            <input
-              value={pickupAddress}
-              onChange={(event) => setPickupAddress(event.target.value)}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-            />
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 p-4">
-            <p className="mb-2 text-sm font-bold">Pickup Time</p>
-            <div className="mb-3 flex gap-4">
-              <label className="flex items-center gap-2 text-sm font-semibold text-blue-800">
-                <input
-                  type="radio"
-                  name="pickupType"
-                  checked={pickupType === 'now'}
-                  onChange={() => setPickupType('now')}
-                />
-                Pickup Now
-              </label>
-              <label className="flex items-center gap-2 text-sm font-semibold text-blue-800">
-                <input
-                  type="radio"
-                  name="pickupType"
-                  checked={pickupType === 'schedule'}
-                  onChange={() => setPickupType('schedule')}
-                />
-                Schedule Pickup
-              </label>
-            </div>
-
-            {pickupType === 'schedule' && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <input
-                  type="date"
-                  value={pickupDate}
-                  onChange={(event) => setPickupDate(event.target.value)}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-                />
-                <input
-                  type="time"
-                  value={pickupTime}
-                  onChange={(event) => setPickupTime(event.target.value)}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 p-4">
-            <label className="flex items-center gap-2 text-sm font-semibold text-blue-800">
-              <input
-                type="checkbox"
-                checked={savePickup}
-                onChange={(event) => setSavePickup(event.target.checked)}
-              />
-              Save this pickup address for future use
-            </label>
-
-            {savePickup && (
-              <input
-                value={saveLabel}
-                onChange={(event) => setSaveLabel(event.target.value)}
-                className="mt-3 w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-                placeholder="Label e.g. Home / Condo / Office"
-              />
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={!canSubmit || isLoading}
-            className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black uppercase tracking-widest text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isLoading ? "Creating..." : "Create Order"}
-          </button>
-        </form>
-
-        {success && <p className="mt-4 rounded-xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-700">{success}</p>}
-        {error && <p className="mt-4 rounded-xl bg-rose-100 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
-      </main>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

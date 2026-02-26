@@ -36,31 +36,33 @@ export default function BottomSheet({
     <>
       {/* Overlay */}
       <div
-        className="fixed inset-0 z-40 bg-black/40 transition-opacity"
+        className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-md transition-opacity animate-in fade-in duration-300"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Bottom Sheet */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
-          {title && (
-            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-          )}
-          {showCloseButton && (
-            <button
-              onClick={onClose}
-              className="ml-auto rounded-lg p-2 hover:bg-gray-100"
-              aria-label="Close"
-            >
-              <X size={24} className="text-gray-600" />
-            </button>
-          )}
-        </div>
+      {/* Responsive Sheet/Modal Container */}
+      <div className="fixed inset-0 z-[210] flex items-end justify-center pointer-events-none sm:items-center p-4">
+        <div className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-3xl bg-white shadow-premium glass-morphism border border-white/20 pointer-events-auto animate-in slide-in-from-bottom-5 sm:zoom-in-95 duration-300 flex flex-col">
+          {/* Header */}
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-blue-50/10 bg-white/80 backdrop-blur-xl px-6 py-4">
+            {title && (
+              <h2 className="text-xl font-black text-blue-900 uppercase tracking-tight">{title}</h2>
+            )}
+            {showCloseButton && (
+              <button
+                onClick={onClose}
+                className="ml-auto rounded-xl p-2 hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors"
+                aria-label="Close"
+              >
+                <X size={24} />
+              </button>
+            )}
+          </div>
 
-        {/* Content */}
-        <div className="px-6 py-4">{children}</div>
+          {/* Content */}
+          <div className="px-6 py-6 overflow-y-auto flex-1">{children}</div>
+        </div>
       </div>
     </>
   );
