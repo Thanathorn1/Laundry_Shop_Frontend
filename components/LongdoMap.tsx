@@ -72,6 +72,28 @@ export default function OpenStreetMapView({ id, callback, className }: OSMMapPro
             const L = await loadLeaflet();
             if (!mounted || !L || mapRef.current) return;
 
+            // Fix CSP-blocked default marker icons
+            if (L.Icon?.Default?.prototype?._getIconUrl) {
+                delete L.Icon.Default.prototype._getIconUrl;
+            }
+            const CDN = 'https://unpkg.com/leaflet@1.9.4/dist/images';
+            if (L.Icon?.Default?.mergeOptions) {
+                L.Icon.Default.mergeOptions({
+                    iconUrl: `${CDN}/marker-icon.png`,
+                    iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+                    shadowUrl: `${CDN}/marker-shadow.png`,
+                });
+            }
+            const defaultIcon = L.icon({
+                iconUrl: `${CDN}/marker-icon.png`,
+                iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+                shadowUrl: `${CDN}/marker-shadow.png`,
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41],
+            });
+
             const placeholder = document.getElementById(id);
             if (!placeholder) return;
 
@@ -91,7 +113,7 @@ export default function OpenStreetMapView({ id, callback, className }: OSMMapPro
                 },
                 Overlays: {
                     add: (marker: { lat: number; lon: number; title?: string; detail?: string }) => {
-                        const item = L.marker([Number(marker.lat), Number(marker.lon)]);
+                        const item = L.marker([Number(marker.lat), Number(marker.lon)], { icon: defaultIcon });
                         const popup = [marker.title, marker.detail].filter(Boolean).join('<br/>');
                         if (popup) item.bindPopup(popup);
                         item.addTo(map);

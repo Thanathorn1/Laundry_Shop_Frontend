@@ -39,7 +39,7 @@ export default function EmployeeUsersPage() {
 
   useEffect(() => {
     const authRole = localStorage.getItem("auth_role");
-    if (authRole !== "admin") {
+    if (authRole !== "admin" && authRole !== "employee") {
       router.replace("/");
       return;
     }

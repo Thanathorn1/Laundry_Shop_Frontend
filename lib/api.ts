@@ -33,10 +33,17 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(joinUrl(API_BASE_URL, endpoint), {
-    ...options,
-    headers,
-  });
+  const requestUrl = joinUrl(API_BASE_URL, endpoint);
+
+  let response: Response;
+  try {
+    response = await fetch(requestUrl, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new Error('Cannot connect to API server. Please check backend server and NEXT_PUBLIC_API_URL.');
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -53,13 +60,20 @@ export async function apiUpload(endpoint: string, formData: FormData) {
 
   const token = localStorage.getItem('access_token');
 
-  const response = await fetch(joinUrl(API_BASE_URL, endpoint), {
-    method: 'PATCH',
-    headers: {
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    },
-    body: formData,
-  });
+  const requestUrl = joinUrl(API_BASE_URL, endpoint);
+
+  let response: Response;
+  try {
+    response = await fetch(requestUrl, {
+      method: 'PATCH',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+  } catch {
+    throw new Error('Cannot connect to API server. Please check backend server and NEXT_PUBLIC_API_URL.');
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

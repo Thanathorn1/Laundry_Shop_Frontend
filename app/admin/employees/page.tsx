@@ -95,6 +95,9 @@ export default function AdminEmployeesPage() {
     } else if (from === "employee") {
       setBackHref("/employee");
       setBackLabel("← Back to Employee");
+    } else if (from === "rider") {
+      setBackHref("/rider");
+      setBackLabel("← Back to Rider");
     }
 
     const authRole = localStorage.getItem("auth_role");

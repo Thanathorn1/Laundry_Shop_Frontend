@@ -68,7 +68,8 @@ type LeafletMap = {
 type LeafletLib = {
   map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
   tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
-  marker: (latLng: [number, number]) => LeafletMarker;
+  marker: (latLng: [number, number], options?: Record<string, unknown>) => LeafletMarker;
+  icon: (options: Record<string, unknown>) => unknown;
   circleMarker: (latLng: [number, number], options?: { radius?: number; color?: string; fillColor?: string; fillOpacity?: number; weight?: number }) => LeafletCircleMarker;
   polyline: (latLngs: [number, number][], options?: { color?: string; weight?: number; opacity?: number }) => LeafletPolyline;
 };
@@ -132,6 +133,35 @@ async function loadLeaflet() {
   });
 
   return (window as unknown as { L?: LeafletLib }).L ?? null;
+}
+
+function fixLeafletIcons(L: LeafletLib) {
+  const CDN = 'https://unpkg.com/leaflet@1.9.4/dist/images';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const LFull = L as any;
+  if (LFull.Icon?.Default?.prototype?._getIconUrl) {
+    delete LFull.Icon.Default.prototype._getIconUrl;
+  }
+  if (LFull.Icon?.Default?.mergeOptions) {
+    LFull.Icon.Default.mergeOptions({
+      iconUrl: `${CDN}/marker-icon.png`,
+      iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+      shadowUrl: `${CDN}/marker-shadow.png`,
+    });
+  }
+}
+
+function makeDefaultIcon(L: LeafletLib) {
+  const CDN = 'https://unpkg.com/leaflet@1.9.4/dist/images';
+  return L.icon({
+    iconUrl: `${CDN}/marker-icon.png`,
+    iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+    shadowUrl: `${CDN}/marker-shadow.png`,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  });
 }
 
 const BACKEND_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
@@ -259,6 +289,7 @@ export default function EmployeePage() {
       if (!mounted || !L || !mapContainerRef.current || mapRef.current) return;
 
       leafletRef.current = L;
+      fixLeafletIcons(L);
       const map = L.map(mapContainerRef.current, { center: [13.7563, 100.5018], zoom: 12 });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
       mapRef.current = map;
@@ -292,7 +323,7 @@ export default function EmployeePage() {
       const name = shop.shopName || shop.label || 'Laundry Shop';
       const imageSrc = toImageSrc(shop.photoImage);
 
-      const marker = L.marker([coords[1], coords[0]])
+      const marker = L.marker([coords[1], coords[0]], { icon: makeDefaultIcon(L) })
         .bindPopup(
           `<div style="min-width:180px"><div style="font-weight:700;margin-bottom:6px">${name}</div>${
             imageSrc
@@ -441,21 +472,25 @@ export default function EmployeePage() {
     riderOverlays.forEach((overlay) => {
       // วาดเส้นทางถ้ามีข้อมูล (points >= 2)
       if (overlay.routePoints.length >= 2) {
+        // สีเส้นทางตามสถานะ: picked_up = น้ำเงิน (ไปส่งร้าน), laundry_done = ส้ม (ไปรับผ้า)
+        const isPickingUp = overlay.status === 'laundry_done';
+        const routeColor = isPickingUp ? '#f97316' : '#2563eb';
         const routeLine = L.polyline(overlay.routePoints, {
-          color: '#2563eb',   // สีฟ้า
+          color: routeColor,
           weight: 4,
           opacity: 0.85,
         })
-          .bindPopup(`<div style="font-weight:700">Rider route to ${overlay.shopName}</div><div style="font-size:12px;color:#475569">Status: ${overlay.status.replace(/_/g, ' ')}</div>`)
+          .bindPopup(`<div style="font-weight:700">Rider route to ${overlay.shopName}</div><div style="font-size:12px;color:#475569">Status: ${overlay.status.replace(/_/g, ' ')}</div><div style="font-size:11px;color:${routeColor};font-weight:600;margin-top:4px">${isPickingUp ? '🔶 ไปรับผ้า (Pickup)' : '🔷 ไปส่งผ้า (Delivery)'}</div>`)
           .addTo(map);
         riderRouteLinesRef.current.push(routeLine);
       }
 
-      // ปักหมุดตำแหน่งไรเดอร์ (จุดสีฟ้า)
+      // ปักหมุดตำแหน่งไรเดอร์ — สีตามสถานะ
+      const isPickingUp = overlay.status === 'laundry_done';
       const riderPin = L.circleMarker([overlay.riderLat, overlay.riderLng], {
         radius: 7,
-        color: '#1d4ed8',
-        fillColor: '#3b82f6',
+        color: isPickingUp ? '#c2410c' : '#1d4ed8',
+        fillColor: isPickingUp ? '#f97316' : '#3b82f6',
         fillOpacity: 0.95,
         weight: 2,
       })

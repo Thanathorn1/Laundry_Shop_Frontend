@@ -9,7 +9,10 @@ const CUSTOMER: LatLng = { lat: 13.745, lng: 100.534 }; // mock customer
 
 function loadLeaflet(): Promise<void> {
   return new Promise((resolve, reject) => {
-    if ((window as any).L) return resolve();
+    if ((window as any).L) {
+      fixLeafletIcons();
+      return resolve();
+    }
 
     const css = document.createElement("link");
     css.rel = "stylesheet";
@@ -18,9 +21,39 @@ function loadLeaflet(): Promise<void> {
 
     const script = document.createElement("script");
     script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = () => resolve();
+    script.onload = () => { fixLeafletIcons(); resolve(); };
     script.onerror = reject;
     document.body.appendChild(script);
+  });
+}
+
+function fixLeafletIcons() {
+  const L = (window as any).L;
+  // Remove _getIconUrl which uses eval-like detection that CSP blocks
+  if (L?.Icon?.Default?.prototype?._getIconUrl) {
+    delete L.Icon.Default.prototype._getIconUrl;
+  }
+  if (L?.Icon?.Default?.mergeOptions) {
+    const CDN = "https://unpkg.com/leaflet@1.9.4/dist/images";
+    L.Icon.Default.mergeOptions({
+      iconUrl: `${CDN}/marker-icon.png`,
+      iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+      shadowUrl: `${CDN}/marker-shadow.png`,
+    });
+  }
+}
+
+function makeDefaultIcon() {
+  const L = (window as any).L;
+  const CDN = "https://unpkg.com/leaflet@1.9.4/dist/images";
+  return L.icon({
+    iconUrl: `${CDN}/marker-icon.png`,
+    iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+    shadowUrl: `${CDN}/marker-shadow.png`,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
   });
 }
 
@@ -76,9 +109,9 @@ export default function MapTestPage() {
         }).addTo(map);
 
         // add static markers
-        markersRef.current.shop = L.marker([SHOP.lat, SHOP.lng]).addTo(map).bindPopup("Shop (mock)");
-        markersRef.current.customer = L.marker([CUSTOMER.lat, CUSTOMER.lng]).addTo(map).bindPopup("Customer (mock)");
-        markersRef.current.rider = L.marker([rider.lat, rider.lng], { opacity: 0.9 }).addTo(map).bindPopup("Rider (mock)");
+        markersRef.current.shop = L.marker([SHOP.lat, SHOP.lng], { icon: makeDefaultIcon() }).addTo(map).bindPopup("Shop (mock)");
+        markersRef.current.customer = L.marker([CUSTOMER.lat, CUSTOMER.lng], { icon: makeDefaultIcon() }).addTo(map).bindPopup("Customer (mock)");
+        markersRef.current.rider = L.marker([rider.lat, rider.lng], { opacity: 0.9, icon: makeDefaultIcon() }).addTo(map).bindPopup("Rider (mock)");
 
         // click to pick location
         map.on("click", (e: any) => {
@@ -87,7 +120,7 @@ export default function MapTestPage() {
           if (markersRef.current.selected) {
             markersRef.current.selected.setLatLng([picked.lat, picked.lng]);
           } else {
-            markersRef.current.selected = L.marker([picked.lat, picked.lng], { draggable: true }).addTo(map).bindPopup("Selected");
+            markersRef.current.selected = L.marker([picked.lat, picked.lng], { draggable: true, icon: makeDefaultIcon() }).addTo(map).bindPopup("Selected");
             markersRef.current.selected.on("dragend", (ev: any) => {
               const pos = ev.target.getLatLng();
               setSelected({ lat: pos.lat, lng: pos.lng });

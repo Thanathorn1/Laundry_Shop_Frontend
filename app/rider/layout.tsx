@@ -10,8 +10,8 @@ export default function RiderLayout({ children }: { children: React.ReactNode })
         homeHref="/rider"
         settingsHref="/rider/settings"
         extraItems={[
-          { label: "Profile", href: "/rider/profile", icon: "👤" },
-          { label: "My Tasks", href: "/rider/tasks", icon: "📋" },
+          { label: "Profile", href: "/rider/profile" },
+          { label: "My Tasks", href: "/rider/tasks" },
         ]}
       />
       <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>

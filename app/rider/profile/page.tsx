@@ -198,27 +198,28 @@ export default function RiderProfile() {
     };
 
     return (
-        <div className="p-8">
-            <div className="max-w-3xl bg-white p-10 rounded-[2rem] shadow-2xl shadow-blue-100/50 border border-white">
-                <div className="mb-10">
-                    <h1 className="text-3xl font-black text-blue-900 tracking-tight">Rider Profile</h1>
-                    <p className="text-blue-700/60 text-sm font-medium">Update your professional details and vehicle information.</p>
+        <div className="px-4 py-6 sm:px-6 lg:px-8">
+            <div className="max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-100">
+                <div className="mb-8">
+                    <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Rider Profile</h1>
+                    <p className="text-slate-400 text-sm mt-1">Update your professional details and vehicle information.</p>
                 </div>
 
-                <div className="mb-8 grid grid-cols-2 gap-8">
+                {/* Image uploads - responsive grid */}
+                <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div>
-                        <label className="mb-3 block text-[10px] font-black text-blue-600 uppercase tracking-widest">Rider Identity</label>
-                        <div className="relative h-48 w-48 overflow-hidden rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 transition-all hover:border-blue-400 hover:bg-white group cursor-pointer shadow-inner">
+                        <label className="mb-2 block text-xs font-semibold text-slate-500 uppercase tracking-wide">Rider Identity</label>
+                        <div className="relative aspect-square max-w-[200px] w-full overflow-hidden rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 transition-all hover:border-blue-400 hover:bg-blue-50/30 group cursor-pointer">
                             {profile.riderImageUrl ? (
                                 <img
                                     src={resolveImg(profile.riderImageUrl)}
                                     alt="Rider"
-                                    className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
                                 />
                             ) : (
-                                <div className="flex h-full flex-col items-center justify-center text-slate-400">
-                                    <span className="text-2xl mb-1">📸</span>
-                                    <span className="text-[10px] font-black uppercase tracking-tight">Upload Rider Image</span>
+                                <div className="flex h-full flex-col items-center justify-center text-slate-400 gap-1">
+                                    <svg className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" /></svg>
+                                    <span className="text-xs font-medium">Upload photo</span>
                                 </div>
                             )}
                             <input
@@ -229,18 +230,18 @@ export default function RiderProfile() {
                         </div>
                     </div>
                     <div>
-                        <label className="mb-3 block text-[10px] font-black text-sky-500 uppercase tracking-widest">Vehicle Details</label>
-                        <div className="relative h-48 w-48 overflow-hidden rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 transition-all hover:border-sky-400 hover:bg-white group cursor-pointer shadow-inner">
+                        <label className="mb-2 block text-xs font-semibold text-slate-500 uppercase tracking-wide">Vehicle Details</label>
+                        <div className="relative aspect-square max-w-[200px] w-full overflow-hidden rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 transition-all hover:border-sky-400 hover:bg-sky-50/30 group cursor-pointer">
                             {profile.vehicleImageUrl ? (
                                 <img
                                     src={resolveImg(profile.vehicleImageUrl)}
                                     alt="Vehicle"
-                                    className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
                                 />
                             ) : (
-                                <div className="flex h-full flex-col items-center justify-center text-slate-400">
-                                    <span className="text-2xl mb-1">🚗</span>
-                                    <span className="text-[10px] font-black uppercase tracking-tight">Upload Vehicle Image</span>
+                                <div className="flex h-full flex-col items-center justify-center text-slate-400 gap-1">
+                                    <svg className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125v-9.25c0-.621-.504-1.125-1.125-1.125H18.75m-7.5-2.25h.008v.008h-.008V2.25zm0 0A2.25 2.25 0 0113.5 4.5h-3A2.25 2.25 0 018.25 2.25zm0 0V.75" /></svg>
+                                    <span className="text-xs font-medium">Upload photo</span>
                                 </div>
                             )}
                             <input
@@ -252,85 +253,86 @@ export default function RiderProfile() {
                     </div>
                 </div>
 
-                <form onSubmit={handleUpdate} className="grid sm:grid-cols-2 gap-6">
-                    <div>
-                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">First Name</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
-                            placeholder="John"
-                            value={profile.firstName}
-                            onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
-                        />
+                <form onSubmit={handleUpdate} className="space-y-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="mb-1.5 block text-xs font-semibold text-slate-500 uppercase tracking-wide">First Name</label>
+                            <input
+                                type="text"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 font-medium outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                                placeholder="John"
+                                value={profile.firstName}
+                                onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1.5 block text-xs font-semibold text-slate-500 uppercase tracking-wide">Last Name</label>
+                            <input
+                                type="text"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 font-medium outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                                placeholder="Doe"
+                                value={profile.lastName}
+                                onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="mb-1.5 block text-xs font-semibold text-slate-500 uppercase tracking-wide">Phone Number</label>
+                            <input
+                                type="text"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 font-medium outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                                placeholder="08X-XXX-XXXX"
+                                value={profile.phone}
+                                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1.5 block text-xs font-semibold text-slate-500 uppercase tracking-wide">License Plate</label>
+                            <input
+                                type="text"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 font-medium outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                                placeholder="ABC-1234"
+                                value={profile.licensePlate}
+                                onChange={(e) => setProfile({ ...profile, licensePlate: e.target.value })}
+                            />
+                        </div>
                     </div>
                     <div>
-                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">Last Name</label>
+                        <label className="mb-1.5 block text-xs font-semibold text-slate-500 uppercase tracking-wide">Driving License Number</label>
                         <input
                             type="text"
-                            className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
-                            placeholder="Doe"
-                            value={profile.lastName}
-                            onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">Phone Number</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
-                            placeholder="08X-XXX-XXXX"
-                            value={profile.phone}
-                            onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">License Plate</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
-                            placeholder="ABC-1234"
-                            value={profile.licensePlate}
-                            onChange={(e) => setProfile({ ...profile, licensePlate: e.target.value })}
-                        />
-                    </div>
-                    <div className="sm:col-span-2">
-                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">Driving License Number</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 font-medium outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                             value={profile.drivingLicense}
                             onChange={(e) => setProfile({ ...profile, drivingLicense: e.target.value })}
                         />
                     </div>
-                    <div className="sm:col-span-2">
-                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">Home Address</label>
+                    <div>
+                        <label className="mb-1.5 block text-xs font-semibold text-slate-500 uppercase tracking-wide">Home Address</label>
                         <textarea
-                            className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 font-medium outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                             rows={3}
                             value={profile.address}
                             onChange={(e) => setProfile({ ...profile, address: e.target.value })}
                         />
                     </div>
-                    <div>
-                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${profile.isApproved ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
-                            {profile.isApproved ? 'Approved' : 'Pending Approval'}
+                    <div className="flex items-center justify-between pt-2">
+                        <span className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${profile.isApproved ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                            {profile.isApproved ? '✓ Approved' : '⏳ Pending Approval'}
                         </span>
                     </div>
                     <button
                         type="submit"
                         disabled={isUpdating}
-                        className="sm:col-span-2 w-full mt-4 rounded-2xl bg-blue-600 px-8 py-4 text-sm font-black text-white shadow-xl shadow-blue-100/50 hover:bg-blue-700 active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 group"
+                        className="w-full mt-2 rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                     >
                         {isUpdating ? (
                             <>
                                 <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                Updating Profile...
+                                Saving...
                             </>
                         ) : (
-                            <>
-                                <span>💾</span>
-                                Save Professional Changes
-                            </>
+                            'Save Changes'
                         )}
                     </button>
                 </form>

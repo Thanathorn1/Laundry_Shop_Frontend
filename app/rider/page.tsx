@@ -134,6 +134,27 @@ function getUserIdFromAccessToken(token: string | null) {
     }
 }
 
+function getRoleFromAccessToken(token: string | null) {
+    try {
+        if (!token) return null;
+        const payloadBase64 = token.split('.')[1];
+        if (!payloadBase64) return null;
+
+        const normalized = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+        const parsed = JSON.parse(atob(padded)) as { role?: string };
+        return typeof parsed.role === 'string' && parsed.role.trim() ? parsed.role.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
+function isUnauthorizedError(error: unknown) {
+    if (!(error instanceof Error)) return false;
+    const message = (error.message || '').toLowerCase();
+    return message.includes('unauthorized') || message.includes('session expired') || message.includes('ล็อคอินใหม่');
+}
+
 export default function RiderDashboard() {
     const [isMapClientReady, setIsMapClientReady] = useState(false);
     const [isLeafletMapReady, setIsLeafletMapReady] = useState(false);
@@ -146,6 +167,7 @@ export default function RiderDashboard() {
     const [sendingAllByShopId, setSendingAllByShopId] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [authBlocked, setAuthBlocked] = useState(false);
     const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
     const [maxDistance, setMaxDistance] = useState<number>(0);
     const [mapView, setMapView] = useState<{ center: [number, number], zoom: number }>({
@@ -153,6 +175,8 @@ export default function RiderDashboard() {
         zoom: 13
     });
     const [taskRouteLines, setTaskRouteLines] = useState<RouteLine[]>([]);
+
+    const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
 
     const [openSections, setOpenSections] = useState({
         orders: true,
@@ -271,12 +295,27 @@ export default function RiderDashboard() {
     }, []);
 
     useEffect(() => {
+        const token = localStorage.getItem('access_token');
+        const roleFromStorage = localStorage.getItem('auth_role');
+        const roleFromToken = getRoleFromAccessToken(token);
+
+        const isRiderSession = Boolean(token) &&
+            (roleFromStorage === 'rider' || (!roleFromStorage && roleFromToken === 'rider'));
+
+        if (!isRiderSession) {
+            setAuthBlocked(true);
+            setError('Unauthorized: please sign in with a rider account.');
+            setLoading(false);
+            return;
+        }
+
         fetchData();
 
         let watchId: number;
         if (navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
                 (position) => {
+                    if (authBlocked) return;
                     const coords = {
                         lat: position.coords.latitude,
                         lon: position.coords.longitude
@@ -319,9 +358,10 @@ export default function RiderDashboard() {
         return () => {
             if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
         };
-    }, []);
+    }, [authBlocked]);
 
     useEffect(() => {
+        if (authBlocked) return;
         if (!API_BASE_URL) return;
 
         const token = localStorage.getItem('access_token');
@@ -365,15 +405,16 @@ export default function RiderDashboard() {
             socket.disconnect();
             socketRef.current = null;
         };
-    }, []);
+    }, [authBlocked]);
 
     // Polling fallback: re-fetch every 5 seconds so data stays fresh even if WebSocket drops
     useEffect(() => {
+        if (authBlocked) return;
         const interval = setInterval(() => {
             void refreshRiderData();
         }, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [authBlocked]);
 
     const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
         const R = 6371;
@@ -666,8 +707,15 @@ export default function RiderDashboard() {
             const data = await apiFetch('/rider/available');
             setAvailableOrders(Array.isArray(data) ? data : []);
         } catch (err) {
+            if (isUnauthorizedError(err)) {
+                setAuthBlocked(true);
+                setError('Unauthorized: your rider session expired. Please sign in again.');
+                if (silent) return;
+            }
             if (!silent) throw err;
-            console.error('Failed to refresh available orders:', err);
+            if (!isUnauthorizedError(err)) {
+                console.error('Failed to refresh available orders:', err);
+            }
         }
     };
 
@@ -676,8 +724,15 @@ export default function RiderDashboard() {
             const data = await apiFetch('/rider/my-tasks');
             setMyTasks(Array.isArray(data) ? data : []);
         } catch (err) {
+            if (isUnauthorizedError(err)) {
+                setAuthBlocked(true);
+                setError('Unauthorized: your rider session expired. Please sign in again.');
+                if (silent) return;
+            }
             if (!silent) throw err;
-            console.error('Failed to refresh rider tasks:', err);
+            if (!isUnauthorizedError(err)) {
+                console.error('Failed to refresh rider tasks:', err);
+            }
         }
     };
 
@@ -686,12 +741,20 @@ export default function RiderDashboard() {
             const data = await apiFetch('/map/shops');
             setShops(Array.isArray(data) ? data : []);
         } catch (err) {
+            if (isUnauthorizedError(err)) {
+                setAuthBlocked(true);
+                setError('Unauthorized: your rider session expired. Please sign in again.');
+                if (silent) return;
+            }
             if (!silent) throw err;
-            console.error('Failed to refresh shops:', err);
+            if (!isUnauthorizedError(err)) {
+                console.error('Failed to refresh shops:', err);
+            }
         }
     };
 
     const refreshRiderData = async () => {
+        if (authBlocked) return;
         await Promise.all([
             fetchAvailableOrders(true),
             fetchMyTasks(true),
@@ -1301,26 +1364,26 @@ export default function RiderDashboard() {
             </div>
 
             {/* Top Bar - Floating Layer */}
-            <div className="absolute top-6 left-6 right-6 z-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pointer-events-none text-blue-900">
+            <div className="absolute top-3 left-3 right-3 sm:top-6 sm:left-6 sm:right-6 z-20 flex items-center justify-between gap-2 pointer-events-none text-blue-900">
                 <div className="pointer-events-auto">
-                    <div className="bg-white/90 backdrop-blur-xl p-4 rounded-[2rem] shadow-2xl shadow-blue-900/10 border border-white/50 flex items-center gap-4">
-                        <div className="h-10 w-10 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
-                            <span className="text-white text-xl">📦</span>
+                    <div className="bg-white/90 backdrop-blur-xl p-2.5 sm:p-4 rounded-xl sm:rounded-[2rem] shadow-lg sm:shadow-2xl shadow-blue-900/10 border border-white/50 flex items-center gap-2.5 sm:gap-4">
+                        <div className="h-8 w-8 sm:h-10 sm:w-10 bg-blue-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+                            <span className="text-white text-base sm:text-xl">📦</span>
                         </div>
                         <div>
-                            <h1 className="text-lg font-black text-blue-900 leading-none">Available Jobs</h1>
-                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-1">Real-time Updates</p>
+                            <h1 className="text-sm sm:text-lg font-extrabold text-slate-800 leading-none">Available Jobs</h1>
+                            <p className="text-[9px] sm:text-[10px] font-semibold text-blue-500 uppercase tracking-wider mt-0.5 sm:mt-1">Real-time Updates</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 pointer-events-auto">
-                    <div className="bg-white/90 backdrop-blur-xl px-2 py-2 rounded-2xl shadow-2xl shadow-blue-900/10 border border-white/50 flex items-center gap-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-2">Range</span>
+                <div className="flex items-center gap-2 pointer-events-auto">
+                    <div className="bg-white/90 backdrop-blur-xl px-2 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl shadow-lg sm:shadow-2xl shadow-blue-900/10 border border-white/50 flex items-center gap-1.5 sm:gap-2">
+                        <span className="hidden sm:inline text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Range</span>
                         <select
                             value={maxDistance}
                             onChange={(e) => setMaxDistance(Number(e.target.value))}
-                            className="bg-blue-50 text-blue-900 text-[10px] font-black px-3 py-1.5 rounded-xl border border-blue-100 focus:outline-none cursor-pointer hover:bg-blue-100 transition-colors"
+                            className="bg-blue-50 text-blue-900 text-[10px] font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl border border-blue-100 focus:outline-none cursor-pointer hover:bg-blue-100 transition-colors"
                         >
                             <option value={5}>5 KM</option>
                             <option value={10}>10 KM</option>
@@ -1331,28 +1394,59 @@ export default function RiderDashboard() {
                     </div>
 
                     {userLocation && (
-                        <div className="bg-blue-600 px-4 py-2.5 rounded-2xl shadow-xl shadow-blue-200 flex items-center gap-2">
+                        <div className="hidden sm:flex bg-blue-600 px-3 py-2 rounded-xl shadow-lg shadow-blue-200 items-center gap-2">
                             <div className="h-1.5 w-1.5 bg-white rounded-full animate-pulse"></div>
-                            <span className="text-[9px] text-white font-black uppercase tracking-widest">GPS Active</span>
+                            <span className="text-[9px] text-white font-bold uppercase tracking-widest">GPS Active</span>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Side Panel - Floating Order List */}
-            <div className="absolute top-32 bottom-6 left-6 w-84 z-20 pointer-events-none flex flex-col gap-4 text-blue-900">
-                <div className="pointer-events-auto flex-1 flex flex-col min-h-0">
-                    <div className="bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-blue-900/10 border border-white/50 overflow-hidden flex flex-col h-full ring-1 ring-black/[0.02]">
-                        <div className="p-6 pb-4 border-b border-slate-50 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-blue-900/40 uppercase tracking-[0.2em]">Nearby Overview</span>
-                            <div className="flex items-center gap-2">
-                                <span className="bg-rose-50 text-rose-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-rose-100">
+            {/* Mobile bottom sheet toggle */}
+            <button
+                onClick={() => setMobileSheetOpen(v => !v)}
+                className="sm:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-white/95 backdrop-blur-xl shadow-lg border border-slate-200 rounded-full px-4 py-2.5 flex items-center gap-2 text-slate-700 active:scale-95 transition-transform"
+            >
+                <svg className={`h-4 w-4 transition-transform ${mobileSheetOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                <span className="text-xs font-bold">{filteredOrders.length} Orders</span>
+                <span className="text-[10px] text-slate-400">•</span>
+                <span className="text-xs font-bold">{nearbyShops.length} Shops</span>
+                {(sendBackToCustomerTasks.length + pickUpLaundryAtShopTasks.length) > 0 && (
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white text-[10px] font-bold">
+                        {sendBackToCustomerTasks.length + pickUpLaundryAtShopTasks.length}
+                    </span>
+                )}
+            </button>
+
+            {/* Mobile backdrop */}
+            {mobileSheetOpen && (
+                <div className="sm:hidden fixed inset-0 bg-black/30 z-20" onClick={() => setMobileSheetOpen(false)} />
+            )}
+
+            {/* Side Panel (desktop) / Bottom Sheet (mobile) */}
+            <div className={`
+                absolute z-20 pointer-events-none flex flex-col gap-4 text-blue-900
+                sm:top-28 sm:bottom-6 sm:left-6 sm:w-84
+                inset-x-0 bottom-0
+                transition-transform duration-300 ease-out
+                ${mobileSheetOpen ? 'translate-y-0' : 'translate-y-full sm:translate-y-0'}
+            `}>
+                <div className="pointer-events-auto flex-1 flex flex-col min-h-0 sm:min-h-0 max-h-[75vh] sm:max-h-none">
+                    <div className="bg-white/95 backdrop-blur-xl rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-blue-900/10 border border-white/50 overflow-hidden flex flex-col h-full ring-1 ring-black/[0.02]">
+                        {/* Drag handle - mobile only */}
+                        <div className="sm:hidden flex justify-center pt-2 pb-1">
+                            <div className="h-1 w-10 rounded-full bg-slate-300"></div>
+                        </div>
+                        <div className="px-4 py-3 sm:p-6 sm:pb-4 border-b border-slate-50 flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nearby Overview</span>
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                <span className="bg-rose-50 text-rose-600 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-rose-100">
                                     {nearbyShops.length} Shops
                                 </span>
-                                <span className="bg-blue-50 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-blue-100">
+                                <span className="bg-blue-50 text-blue-600 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-blue-100">
                                     {filteredOrders.length} Orders
                                 </span>
-                                <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-emerald-100">
+                                <span className="bg-emerald-50 text-emerald-600 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-emerald-100">
                                     {sendBackToCustomerTasks.length} Return
                                 </span>
                             </div>

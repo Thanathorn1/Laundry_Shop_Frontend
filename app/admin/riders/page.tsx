@@ -51,6 +51,9 @@ export default function AdminRidersPage() {
     } else if (from === "employee") {
       setBackHref("/employee");
       setBackLabel("← Back to Employee");
+    } else if (from === "rider") {
+      setBackHref("/rider");
+      setBackLabel("← Back to Rider");
     }
 
     const authRole = localStorage.getItem("auth_role");
@@ -70,7 +73,7 @@ export default function AdminRidersPage() {
     setItems((prev) => prev.map((item) => (item._id === updated._id ? { ...item, ...updated } : item)));
   };
 
-  const handleChangeRole = async (item: AdminUser, role: "user" | "rider" | "admin") => {
+  const handleChangeRole = async (item: AdminUser, role: "user" | "rider" | "employee" | "admin") => {
     setActionUserId(item._id);
     setError(null);
     setMessage(null);
@@ -310,11 +313,12 @@ export default function AdminRidersPage() {
                         <select
                           value={item.role}
                           disabled={busy}
-                          onChange={(event) => handleChangeRole(item, event.target.value as "user" | "rider" | "admin")}
+                          onChange={(event) => handleChangeRole(item, event.target.value as "user" | "rider" | "employee" | "admin")}
                           className="rounded-lg border border-blue-100 bg-white px-2 py-1 text-xs font-semibold text-blue-900"
                         >
                           <option value="user">user</option>
                           <option value="rider">rider</option>
+                          <option value="employee">employee</option>
                           <option value="admin">admin</option>
                         </select>
                       </td>

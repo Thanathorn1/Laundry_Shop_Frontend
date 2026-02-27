@@ -27,7 +27,8 @@ type LeafletMap = {
 type LeafletLib = {
   map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
   tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
-  marker: (latLng: [number, number], options?: { draggable?: boolean }) => LeafletMarker;
+  marker: (latLng: [number, number], options?: { draggable?: boolean; icon?: unknown }) => LeafletMarker;
+  icon: (options: { iconUrl: string; iconRetinaUrl?: string; shadowUrl?: string; iconSize: [number, number]; iconAnchor: [number, number]; popupAnchor: [number, number]; shadowSize?: [number, number] }) => unknown;
 };
 
 const DEFAULT_COORDS: LatLng = { lat: 13.7563, lng: 100.5018 };
@@ -47,7 +48,10 @@ function toImageSrc(input?: string) {
 async function loadLeaflet() {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { L?: LeafletLib };
-  if (w.L) return w.L;
+  if (w.L) {
+    fixLeafletIcons(w.L);
+    return w.L;
+  }
 
   if (!document.querySelector('link[data-leaflet="true"]')) {
     const css = document.createElement("link");
@@ -78,7 +82,43 @@ async function loadLeaflet() {
     document.body.appendChild(script);
   });
 
-  return (window as unknown as { L?: LeafletLib }).L ?? null;
+  const L = (window as unknown as { L?: LeafletLib }).L ?? null;
+
+  if (L) {
+    fixLeafletIcons(L);
+  }
+
+  return L;
+}
+
+function fixLeafletIcons(L: LeafletLib) {
+  const CDN = "https://unpkg.com/leaflet@1.9.4/dist/images";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const LFull = L as any;
+  // Remove _getIconUrl which uses eval-like detection that CSP blocks
+  if (LFull.Icon?.Default?.prototype?._getIconUrl) {
+    delete LFull.Icon.Default.prototype._getIconUrl;
+  }
+  if (LFull.Icon?.Default?.mergeOptions) {
+    LFull.Icon.Default.mergeOptions({
+      iconUrl: `${CDN}/marker-icon.png`,
+      iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+      shadowUrl: `${CDN}/marker-shadow.png`,
+    });
+  }
+}
+
+function makeDefaultIcon(L: LeafletLib) {
+  const CDN = "https://unpkg.com/leaflet@1.9.4/dist/images";
+  return L.icon({
+    iconUrl: `${CDN}/marker-icon.png`,
+    iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+    shadowUrl: `${CDN}/marker-shadow.png`,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  });
 }
 
 type Shop = {
@@ -166,8 +206,23 @@ export default function AdminPinShopPage() {
       }
 
       leafletRef.current = L;
-      const initialLat = Number(latitude) || DEFAULT_COORDS.lat;
-      const initialLng = Number(longitude) || DEFAULT_COORDS.lng;
+
+      // Try to get current position for initial map center
+      let initialLat = Number(latitude) || DEFAULT_COORDS.lat;
+      let initialLng = Number(longitude) || DEFAULT_COORDS.lng;
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
+        );
+        initialLat = pos.coords.latitude;
+        initialLng = pos.coords.longitude;
+        if (mounted) {
+          setLatitude(String(initialLat));
+          setLongitude(String(initialLng));
+        }
+      } catch {
+        // Geolocation unavailable/denied — use default
+      }
 
       const map = L.map(mapContainerRef.current, {
         center: [initialLat, initialLng],
@@ -178,7 +233,7 @@ export default function AdminPinShopPage() {
         maxZoom: 19,
       }).addTo(map);
 
-      const marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+      const marker = L.marker([initialLat, initialLng], { draggable: true, icon: makeDefaultIcon(L) }).addTo(map);
       marker.bindPopup("New Shop Location");
 
       marker.on("dragend", () => {
@@ -243,7 +298,7 @@ export default function AdminPinShopPage() {
       if (Number.isNaN(shopLat) || Number.isNaN(shopLng)) continue;
 
       const name = shop.shopName || shop.label || "Shop";
-      const marker = L.marker([shopLat, shopLng]).addTo(mapRef.current);
+      const marker = L.marker([shopLat, shopLng], { icon: makeDefaultIcon(L) }).addTo(mapRef.current);
       const imageSrc = toImageSrc(shop.photoImage);
       marker.bindPopup(
         `<div style="min-width:180px"><div style="font-weight:700;margin-bottom:6px">${name}</div>${
@@ -334,7 +389,7 @@ export default function AdminPinShopPage() {
         maxZoom: 19,
       }).addTo(map);
 
-      const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+      const marker = L.marker([lat, lng], { draggable: true, icon: makeDefaultIcon(L) }).addTo(map);
       marker.bindPopup("Edit Shop Location");
 
       marker.on("dragend", () => {
@@ -414,6 +469,9 @@ export default function AdminPinShopPage() {
     } else if (from === "employee") {
       setBackHref("/employee");
       setBackLabel("← Back to Employee");
+    } else if (from === "rider") {
+      setBackHref("/rider");
+      setBackLabel("← Back to Rider");
     }
 
     const authRole = localStorage.getItem("auth_role");
@@ -637,7 +695,37 @@ export default function AdminPinShopPage() {
         </div>
 
         <div className="rounded-3xl border border-white bg-white p-6 shadow-2xl shadow-blue-100/40">
-          <p className="mb-3 text-sm font-semibold text-blue-700/80">Click map to choose shop pin location.</p>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold text-blue-700/80">Click map or drag pin to choose shop location.</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (!navigator.geolocation) {
+                  setError("Geolocation is not supported by your browser");
+                  return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    setLatitude(String(lat));
+                    setLongitude(String(lng));
+                  },
+                  () => {
+                    setError("Unable to get your location. Please allow location access.");
+                  },
+                  { enableHighAccuracy: true, timeout: 10000 }
+                );
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Use My Location
+            </button>
+          </div>
           <div ref={mapContainerRef} className="mb-4 h-80 w-full rounded-2xl border border-slate-200" />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <label className="space-y-1">

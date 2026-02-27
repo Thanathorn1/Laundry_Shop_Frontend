@@ -62,7 +62,8 @@ type LeafletMap = {
 type LeafletLib = {
     map: (container: HTMLElement, options: { center: [number, number]; zoom: number }) => LeafletMap;
     tileLayer: (url: string, options: { maxZoom: number }) => { addTo: (map: LeafletMap) => void };
-    marker: (latLng: [number, number], options: { draggable: boolean }) => LeafletMarker;
+    marker: (latLng: [number, number], options?: Record<string, unknown>) => LeafletMarker;
+    icon: (options: Record<string, unknown>) => unknown;
 };
 
 const DEFAULT_PICKUP = { lat: 13.7563, lng: 100.5018 };
@@ -105,7 +106,10 @@ function getUserIdFromAccessToken(token: string | null) {
 async function loadLeaflet() {
     if (typeof window === 'undefined') return null;
     const w = window as unknown as { L?: LeafletLib };
-    if (w.L) return w.L;
+    if (w.L) {
+        fixLeafletDefaultIcons();
+        return w.L;
+    }
 
     if (!document.querySelector('link[data-leaflet="true"]')) {
         const css = document.createElement('link');
@@ -136,7 +140,37 @@ async function loadLeaflet() {
         document.body.appendChild(script);
     });
 
+    fixLeafletDefaultIcons();
     return (window as unknown as { L?: LeafletLib }).L ?? null;
+}
+
+function fixLeafletDefaultIcons() {
+    const L = (window as any).L;
+    // Remove _getIconUrl which uses eval-like detection that CSP blocks
+    if (L?.Icon?.Default?.prototype?._getIconUrl) {
+        delete L.Icon.Default.prototype._getIconUrl;
+    }
+    if (L?.Icon?.Default?.mergeOptions) {
+        const CDN = 'https://unpkg.com/leaflet@1.9.4/dist/images';
+        L.Icon.Default.mergeOptions({
+            iconUrl: `${CDN}/marker-icon.png`,
+            iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+            shadowUrl: `${CDN}/marker-shadow.png`,
+        });
+    }
+}
+
+function makeDefaultIcon(L: LeafletLib) {
+    const CDN = 'https://unpkg.com/leaflet@1.9.4/dist/images';
+    return L.icon({
+        iconUrl: `${CDN}/marker-icon.png`,
+        iconRetinaUrl: `${CDN}/marker-icon-2x.png`,
+        shadowUrl: `${CDN}/marker-shadow.png`,
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+    });
 }
 
 interface Order {
@@ -424,7 +458,7 @@ export default function CustomerPage() {
                 maxZoom: 19,
             }).addTo(map);
 
-            const marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+            const marker = L.marker([initialLat, initialLng], { draggable: true, icon: makeDefaultIcon(L) }).addTo(map);
 
             marker.on('dragend', () => {
                 const point = marker.getLatLng();

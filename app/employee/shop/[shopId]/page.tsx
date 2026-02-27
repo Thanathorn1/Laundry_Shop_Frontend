@@ -84,6 +84,7 @@ export default function EmployeeShopPage() {
   const [joinActionId, setJoinActionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
 
   const isMemberOfShop = (value: MyEmployeeProfile | null, targetShopId: string) => {
     if (!value || !targetShopId) return false;
@@ -280,7 +281,7 @@ export default function EmployeeShopPage() {
         </div>
       )}
 
-      <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {orders.map((order) => {
           const customerName = `${order.customerId?.firstName || ''} ${order.customerId?.lastName || ''}`.trim() || 'Customer';
           const employeeName = `${order.employeeId?.firstName || ''} ${order.employeeId?.lastName || ''}`.trim() || order.employeeId?.email || '-';
@@ -292,18 +293,11 @@ export default function EmployeeShopPage() {
           const isLaundryDone = order.status === 'laundry_done';
           const statusLabel = order.status;
           const stageLabel = (() => {
-            if (isLaundryDone) return isDryOnlyLaundry ? 'Stage: อบผ้าเสร็จแล้ว' : 'Stage: ซัก+อบผ้าเสร็จแล้ว';
-            if (order.status === 'washing') return 'Stage: กำลังซัก';
-            if (order.status === 'drying') return 'Stage: กำลังอบผ้า';
-            if (order.status === 'at_shop') return isDryOnlyLaundry ? 'Stage: รอเริ่มอบผ้า' : 'Stage: รอเริ่มซัก';
-            return isDryOnlyLaundry ? 'Stage: เตรียมอบผ้า' : 'Stage: เตรียมซัก';
-          })();
-          const dryStageLabel = (() => {
-            if (isLaundryDone) return 'Dry Stage (อบผ้า): เสร็จแล้ว';
-            if (order.status === 'drying') return 'Dry Stage (อบผ้า): กำลังอบผ้า';
-            if (order.status === 'washing') return 'Dry Stage (อบผ้า): รอคิวหลังซัก';
-            if (order.status === 'at_shop') return 'Dry Stage (อบผ้า): รอเริ่ม';
-            return 'Dry Stage (อบผ้า): เตรียมงาน';
+            if (isLaundryDone) return isDryOnlyLaundry ? 'อบผ้าเสร็จแล้ว' : 'ซัก+อบเสร็จ';
+            if (order.status === 'washing') return 'กำลังซัก';
+            if (order.status === 'drying') return 'กำลังอบผ้า';
+            if (order.status === 'at_shop') return isDryOnlyLaundry ? 'รอเริ่มอบผ้า' : 'รอเริ่มซัก';
+            return isDryOnlyLaundry ? 'เตรียมอบผ้า' : 'เตรียมซัก';
           })();
           const displayServiceTime = typeof order.serviceTimeMinutes === 'number' ? order.serviceTimeMinutes : 50;
           const unitPrice = isDryOnlyLaundry ? 20 : getWashUnitPrice(order.weightCategory);
@@ -317,59 +311,90 @@ export default function EmployeeShopPage() {
           const dryPrice = priceSummary.dryPrice;
           const displayPrice = typeof order.totalPrice === 'number' && order.totalPrice > 0 ? order.totalPrice : priceSummary.totalPrice;
 
+          // Status color mapping
+          const statusColor = (() => {
+            switch (order.status) {
+              case 'at_shop': return 'bg-amber-50 text-amber-700 border-amber-200';
+              case 'washing': return 'bg-sky-50 text-sky-700 border-sky-200';
+              case 'drying': return 'bg-purple-50 text-purple-700 border-purple-200';
+              case 'laundry_done': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+              default: return 'bg-slate-50 text-slate-600 border-slate-200';
+            }
+          })();
+
           return (
-            <div key={order._id} className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-black text-blue-900">{order.productName || 'Laundry Order'}</h3>
-                  <p className="text-xs text-blue-600 mt-1">Customer: {customerName}</p>
-                  <p className="text-xs text-blue-600">Employee: {employeeName}</p>
-                  <p className="text-xs text-blue-600">
-                    Type: {isDryOnlyLaundry ? 'Dry Only Laundry (อบผ้า)' : 'Wash + Dry Laundry'}
-                    {order.weightCategory ? ` • Weight: ${getWeightCategoryLabel(order.weightCategory)}` : ''}
-                    {typeof order.serviceTimeMinutes === 'number' ? ` • Drying: ${order.serviceTimeMinutes} min` : ''}
-                  </p>
-                  <p className="text-xs font-bold text-purple-700">Dry Step: อบผ้า</p>
-                  <p className="text-xs font-bold text-indigo-700">{stageLabel}</p>
-                  <p className="text-xs font-bold text-purple-700">{dryStageLabel}</p>
+            <div key={order._id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+              {/* Header: Name + Status */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h3 className="text-sm font-bold text-blue-900 truncate">{order.productName || 'Laundry Order'}</h3>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${statusColor}`}>{statusLabel}</span>
+              </div>
+
+              {/* Info rows */}
+              <div className="space-y-0.5 text-[11px] text-slate-500">
+                <div className="flex gap-1"><span className="font-semibold text-slate-700">Customer:</span> {customerName}</div>
+                <div className="flex gap-1"><span className="font-semibold text-slate-700">Employee:</span> {employeeName}</div>
+                <div className="flex gap-1 flex-wrap">
+                  <span className="font-semibold text-slate-700">Type:</span>
+                  <span>{isDryOnlyLaundry ? 'Dry Only' : 'Wash + Dry'}</span>
+                  {order.weightCategory && <span className="text-slate-400">• {getWeightCategoryLabel(order.weightCategory)}</span>}
+                  {typeof order.serviceTimeMinutes === 'number' && <span className="text-slate-400">• {order.serviceTimeMinutes}min</span>}
                 </div>
-                <span className="rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700">{statusLabel}</span>
               </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-2 text-sm">
-                <p><span className="font-black text-blue-900">Pickup:</span> {order.pickupAddress || '-'}</p>
-                <p><span className="font-black text-blue-900">Delivery:</span> {order.deliveryAddress || '-'}</p>
-              </div>
-              <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <p className="text-sm font-black text-emerald-800">Price: ฿{displayPrice.toLocaleString()}</p>
-                <p className="text-[11px] font-semibold text-emerald-700/90">สูตรซัก: {isDryOnlyLaundry ? '0 บาท (Dry only)' : `(${displayServiceTime} ÷ 50) × ${unitPrice} บาท`}</p>
-                <p className="text-[11px] font-semibold text-emerald-700/90">สูตรอบผ้า: ({displayServiceTime} ÷ 50) × 20 บาท</p>
-                <p className="text-[11px] font-semibold text-emerald-700/90">รวมค่าซัก/อบ: ฿{(washPrice + dryPrice).toLocaleString()}</p>
-                <p className="text-[11px] font-semibold text-emerald-700/90">+ Delivery 50 {order.pickupType === 'now' ? '+ Pickup Now 20' : '+ Pickup Schedule 0'}</p>
+              {/* Stage badge */}
+              <div className="mt-2 flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
+                <span className="text-[11px] font-semibold text-indigo-700">{stageLabel}</span>
               </div>
 
+              {/* Pickup / Delivery */}
+              <div className="mt-2 grid grid-cols-2 gap-1 text-[11px]">
+                <div className="truncate"><span className="font-semibold text-slate-700">Pickup:</span> {order.pickupAddress || '-'}</div>
+                <div className="truncate"><span className="font-semibold text-slate-700">Delivery:</span> {order.deliveryAddress || '-'}</div>
+              </div>
+
+              {/* Price compact */}
+              <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-100 px-2.5 py-1.5">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-bold text-emerald-800">฿{displayPrice.toLocaleString()}</span>
+                  <span className="text-[10px] text-emerald-600">ซัก/อบ ฿{(washPrice + dryPrice).toLocaleString()} + ค่าส่ง</span>
+                </div>
+              </div>
+
+              {/* Images - compact thumbnails with click-to-zoom */}
               {Array.isArray(order.images) && order.images.length > 0 && (
-                <div className="mt-4">
-                  <p className="mb-2 text-xs font-black uppercase tracking-widest text-blue-700">Laundry Basket Images</p>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {order.images.slice(0, 4).map((image, index) => (
-                      <div key={`${order._id}-img-${index}`} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                        <img
-                          src={resolveAssetUrl(image)}
-                          alt={`Order ${order._id} basket ${index + 1}`}
-                          className="h-24 w-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
+                <div className="mt-2 flex gap-1">
+                  {order.images.slice(0, 3).map((image, index) => (
+                    <button
+                      key={`${order._id}-img-${index}`}
+                      onClick={() => setZoomImage(resolveAssetUrl(image))}
+                      className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 h-12 w-12 shrink-0 cursor-zoom-in hover:ring-2 hover:ring-blue-400 transition-all"
+                    >
+                      <img
+                        src={resolveAssetUrl(image)}
+                        alt={`Basket ${index + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                  ))}
+                  {order.images.length > 3 && (
+                    <button
+                      onClick={() => setZoomImage(resolveAssetUrl(order.images![3]))}
+                      className="flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 h-12 w-12 shrink-0 cursor-zoom-in hover:ring-2 hover:ring-blue-400 transition-all"
+                    >
+                      <span className="text-[10px] font-bold text-slate-400">+{order.images.length - 3}</span>
+                    </button>
+                  )}
                 </div>
               )}
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              {/* Action buttons */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {canStartWash && (
                   <button
                     onClick={() => startWash(order._id)}
-                    className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-700 hover:bg-amber-100"
+                    className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-100 transition-colors"
                   >
                     เริ่มซัก
                   </button>
@@ -377,15 +402,15 @@ export default function EmployeeShopPage() {
                 {canFinishWash && (
                   <button
                     onClick={() => finishWash(order._id)}
-                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-100"
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
                   >
-                    เสร็จซัก (ไปขั้นตอนอบผ้า)
+                    เสร็จซัก → อบผ้า
                   </button>
                 )}
                 {canStartDry && (
                   <button
                     onClick={() => startWash(order._id)}
-                    className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-purple-700 hover:bg-purple-100"
+                    className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-1 text-[10px] font-bold text-purple-700 hover:bg-purple-100 transition-colors"
                   >
                     เริ่มอบผ้า
                   </button>
@@ -393,14 +418,14 @@ export default function EmployeeShopPage() {
                 {canFinishDry && (
                   <button
                     onClick={() => finishDry(order._id)}
-                    className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-indigo-700 hover:bg-indigo-100"
+                    className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 transition-colors"
                   >
                     เสร็จอบผ้า
                   </button>
                 )}
                 {isLaundryDone && (
-                  <span className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
-                    {isDryOnlyLaundry ? 'อบผ้าเสร็จแล้ว' : 'ซัก+อบผ้าเสร็จแล้ว'}
+                  <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">
+                    {isDryOnlyLaundry ? 'อบผ้าเสร็จ ✓' : 'ซัก+อบเสร็จ ✓'}
                   </span>
                 )}
               </div>
@@ -408,6 +433,30 @@ export default function EmployeeShopPage() {
           );
         })}
       </div>
+
+      {/* Image Zoom Modal */}
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setZoomImage(null)}
+        >
+          <div className="relative max-w-3xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setZoomImage(null)}
+              className="absolute -top-3 -right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-lg text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={zoomImage}
+              alt="Zoomed basket"
+              className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
