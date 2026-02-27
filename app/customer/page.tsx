@@ -265,12 +265,20 @@ export default function CustomerPage() {
     const [trackingSummary, setTrackingSummary] = useState<{ label: string; distanceKm: number | null; durationMin: number | null } | null>(null);
 
     const [leaflet, setLeaflet] = useState<typeof import('leaflet') | null>(null);
+    const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         setHasMounted(true);
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
+                () => { /* ignore geolocation errors */ },
+                { enableHighAccuracy: true, timeout: 10000 },
+            );
+        }
     }, []);
 
     useEffect(() => {
@@ -293,13 +301,15 @@ export default function CustomerPage() {
         return leaflet.divIcon({
             className: 'customer-rider-icon',
             html: `
-                <div class="relative flex items-center justify-center">
-                    <div class="absolute h-6 w-6 rounded-full bg-blue-500/20 animate-ping"></div>
-                    <div class="h-4 w-4 rounded-full bg-blue-600 border-2 border-white shadow-lg ring-2 ring-blue-600/20"></div>
+                <div style="position:relative;display:flex;align-items:center;justify-content:center;width:36px;height:36px">
+                    <div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,130,246,0.15);animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite"></div>
+                    <div style="width:32px;height:32px;background:#2563eb;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 8px rgba(37,99,235,0.4);display:flex;align-items:center;justify-content:center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/><path d="M14 17h2a2 2 0 0 0 2-2v-3a2 2 0 0 0-.586-1.414l-3-3A2 2 0 0 0 13 7h-2a1 1 0 0 0-1 1v7a2 2 0 0 0 2 2z"/><circle cx="7" cy="19" r="2"/><circle cx="16" cy="19" r="2"/></svg>
+                    </div>
                 </div>
             `,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
+            iconSize: [36, 36],
+            iconAnchor: [18, 18],
         });
     }, [leaflet]);
 
@@ -322,12 +332,27 @@ export default function CustomerPage() {
         return leaflet.divIcon({
             className: 'customer-shop-icon',
             html: `
-                <div class="relative flex items-center justify-center">
-                    <div class="h-4 w-4 rounded-full bg-fuchsia-600 border-2 border-white shadow-lg ring-2 ring-fuchsia-600/20"></div>
+                <div style="width:34px;height:34px;background:#7c3aed;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 8px rgba(124,58,237,0.4);display:flex;align-items:center;justify-content:center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3"/><circle cx="12" cy="14" r="5"/><circle cx="12" cy="14" r="2"/><circle cx="7" cy="5.5" r="1" fill="white" stroke="none"/><circle cx="10" cy="5.5" r="1" fill="white" stroke="none"/><line x1="14" y1="5.5" x2="19" y2="5.5"/></svg>
                 </div>
             `,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+        });
+    }, [leaflet]);
+
+    const userLocationIcon = useMemo(() => {
+        if (!leaflet) return null;
+        return leaflet.divIcon({
+            className: 'customer-user-location-icon',
+            html: `
+                <div style="position:relative;display:flex;align-items:center;justify-content:center;width:24px;height:24px">
+                    <div style="position:absolute;inset:0;border-radius:50%;background:rgba(16,185,129,0.2);animation:ping 2s cubic-bezier(0,0,0.2,1) infinite"></div>
+                    <div style="width:14px;height:14px;background:#10b981;border-radius:50%;border:3px solid white;box-shadow:0 1px 6px rgba(16,185,129,0.5)"></div>
+                </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
         });
     }, [leaflet]);
 
@@ -689,6 +714,20 @@ export default function CustomerPage() {
         return map;
     }, [shops]);
 
+    // All shop locations for map markers
+    const allShopPoints = useMemo(() => {
+        return (shops || [])
+            .map((shop) => {
+                const coords = shop?.location?.coordinates;
+                if (!Array.isArray(coords) || coords.length < 2) return null;
+                const lat = coords[1];
+                const lng = coords[0];
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                return { id: shop._id, name: shop.shopName || shop.label || 'Shop', position: [lat, lng] as [number, number] };
+            })
+            .filter(Boolean) as { id: string; name: string; position: [number, number] }[];
+    }, [shops]);
+
     const getCoordFromGeo = (coords?: number[]): [number, number] | null => {
         if (!Array.isArray(coords) || coords.length < 2) return null;
         const lat = coords[1];
@@ -844,6 +883,13 @@ export default function CustomerPage() {
             cancelled = true;
         };
     }, [trackedOrder, riderLiveLocation, shopsById]);
+
+    // Center map on user's current location if no tracked order is moving the map
+    useEffect(() => {
+        if (userLocation && !trackedOrder) {
+            setTrackingMapView({ center: userLocation, zoom: 14 });
+        }
+    }, [userLocation, trackedOrder]);
 
     const trackedPickupPoint = trackedOrder ? getPickupPoint(trackedOrder) : null;
     const trackedDeliveryPoint = trackedOrder ? getDeliveryPoint(trackedOrder) : null;
@@ -1213,7 +1259,14 @@ export default function CustomerPage() {
                                     const displayServiceTime = typeof order.serviceTimeMinutes === 'number' ? order.serviceTimeMinutes : 50;
                                     const unitPrice = order.laundryType === 'dry' ? 20 : getWashUnitPrice(order.weightCategory);
                                     return (
-                                        <div key={order._id} className={`p-5 rounded-2xl border ${cfg.bg} transition-all hover:shadow-md`}>
+                                        <div
+                                            key={order._id}
+                                            className={`p-5 rounded-2xl border ${cfg.bg} transition-all hover:shadow-md cursor-pointer`}
+                                            onClick={() => {
+                                                const pt = getPickupPoint(order) || getDeliveryPoint(order);
+                                                if (pt) setTrackingMapView({ center: pt, zoom: 15 });
+                                            }}
+                                        >
                                             <div className="flex items-start justify-between mb-3">
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="font-black text-blue-900 truncate">{order.productName}</h4>
@@ -1336,6 +1389,26 @@ export default function CustomerPage() {
                                         {trackedShopPoint && shopIcon && (
                                             <Marker position={trackedShopPoint} icon={shopIcon}>
                                                 <Popup>Laundry shop</Popup>
+                                            </Marker>
+                                        )}
+
+                                        {/* Show all shop locations */}
+                                        {shopIcon && allShopPoints
+                                            .filter((sp) => {
+                                                // Skip if same as trackedShopPoint (already shown above)
+                                                if (!trackedShopPoint) return true;
+                                                return sp.position[0] !== trackedShopPoint[0] || sp.position[1] !== trackedShopPoint[1];
+                                            })
+                                            .map((sp) => (
+                                                <Marker key={sp.id} position={sp.position} icon={shopIcon}>
+                                                    <Popup>{sp.name}</Popup>
+                                                </Marker>
+                                            ))
+                                        }
+
+                                        {userLocation && userLocationIcon && (
+                                            <Marker position={userLocation} icon={userLocationIcon}>
+                                                <Popup>Your location</Popup>
                                             </Marker>
                                         )}
                                     </MapContainer>

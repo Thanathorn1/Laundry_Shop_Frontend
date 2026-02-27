@@ -323,7 +323,14 @@ export default function EmployeePage() {
       const name = shop.shopName || shop.label || 'Laundry Shop';
       const imageSrc = toImageSrc(shop.photoImage);
 
-      const marker = L.marker([coords[1], coords[0]], { icon: makeDefaultIcon(L) })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const shopDivIcon = (L as any).divIcon({
+        className: 'employee-shop-washer-icon',
+        html: `<div style="width:34px;height:34px;background:#7c3aed;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 8px rgba(124,58,237,0.4);display:flex;align-items:center;justify-content:center"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3"/><circle cx="12" cy="14" r="5"/><circle cx="12" cy="14" r="2"/><circle cx="7" cy="5.5" r="1" fill="white" stroke="none"/><circle cx="10" cy="5.5" r="1" fill="white" stroke="none"/><line x1="14" y1="5.5" x2="19" y2="5.5"/></svg></div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+      const marker = L.marker([coords[1], coords[0]], { icon: shopDivIcon } as any)
         .bindPopup(
           `<div style="min-width:180px"><div style="font-weight:700;margin-bottom:6px">${name}</div>${
             imageSrc
@@ -487,17 +494,15 @@ export default function EmployeePage() {
 
       // ปักหมุดตำแหน่งไรเดอร์ — สีตามสถานะ
       const isPickingUp = overlay.status === 'laundry_done';
-      const riderPin = L.circleMarker([overlay.riderLat, overlay.riderLng], {
-        radius: 7,
-        color: isPickingUp ? '#c2410c' : '#1d4ed8',
-        fillColor: isPickingUp ? '#f97316' : '#3b82f6',
-        fillOpacity: 0.95,
-        weight: 2,
-      })
+      const riderDiv = document.createElement('div');
+      riderDiv.innerHTML = `<div style="width:34px;height:34px;background:${isPickingUp ? '#f97316' : '#2563eb'};border-radius:50%;border:2.5px solid white;box-shadow:0 2px 8px ${isPickingUp ? 'rgba(249,115,22,0.4)' : 'rgba(37,99,235,0.4)'};display:flex;align-items:center;justify-content:center"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/><path d="M14 17h2a2 2 0 0 0 2-2v-3a2 2 0 0 0-.586-1.414l-3-3A2 2 0 0 0 13 7h-2a1 1 0 0 0-1 1v7a2 2 0 0 0 2 2z"/><circle cx="7" cy="19" r="2"/><circle cx="16" cy="19" r="2"/></svg></div>`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const riderDivIcon = (L as any).divIcon({ className: 'employee-rider-car-icon', html: riderDiv.innerHTML, iconSize: [34, 34], iconAnchor: [17, 17] });
+      const riderPin = L.marker([overlay.riderLat, overlay.riderLng], { icon: riderDivIcon } as any)
         .bindPopup(`<div style="min-width:170px"><div style="font-weight:700;margin-bottom:4px">Rider</div><div style="font-size:12px;color:#475569">Shop: ${overlay.shopName}</div><div style="font-size:12px;color:#475569">Status: ${overlay.status.replace(/_/g, ' ')}</div></div>`)
         .addTo(map);
 
-      riderMarkersRef.current.push(riderPin);
+      riderMarkersRef.current.push(riderPin as any);
     });
   }, [riderOverlays]);
 

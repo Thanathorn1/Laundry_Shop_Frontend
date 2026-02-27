@@ -275,12 +275,12 @@ export default function RiderDashboard() {
         return leaflet.divIcon({
             className: 'custom-shop-icon',
             html: `
-                <div class="relative flex items-center justify-center">
-                    <div class="h-4 w-4 rounded-full bg-rose-600 border-2 border-white shadow-lg ring-2 ring-rose-600/20"></div>
+                <div style="width:34px;height:34px;background:#e11d48;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 8px rgba(225,29,72,0.4);display:flex;align-items:center;justify-content:center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3"/><circle cx="12" cy="14" r="5"/><circle cx="12" cy="14" r="2"/><circle cx="7" cy="5.5" r="1" fill="white" stroke="none"/><circle cx="10" cy="5.5" r="1" fill="white" stroke="none"/><line x1="14" y1="5.5" x2="19" y2="5.5"/></svg>
                 </div>
             `,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
         });
     }, [leaflet]);
 
