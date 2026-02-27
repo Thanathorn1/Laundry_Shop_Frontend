@@ -23,8 +23,10 @@ type UserTopNavbarProps = {
 type ProfileLike = {
   firstName?: string;
   lastName?: string;
+  fullName?: string;
   email?: string;
   profileImage?: string;
+  riderImageUrl?: string;
 };
 
 function getRoleFromAccessToken(token: string | null): Role | null {
@@ -67,7 +69,7 @@ export default function UserTopNavbar({ role, homeHref, settingsHref, extraItems
     const loadProfile = async () => {
       const endpointByRole: Record<Role, string> = {
         user: "/customers/me",
-        rider: "/riders/me",
+        rider: "/rider/profile",
         employee: "/employees/me",
         admin: "/admins/me",
       };
@@ -76,11 +78,12 @@ export default function UserTopNavbar({ role, homeHref, settingsHref, extraItems
 
       try {
         const profile = (await apiFetch(endpointByRole[role])) as ProfileLike;
-        const fullName = `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim();
+        const fullName = `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim() || profile?.fullName || "";
         const name = fullName || profile?.email || fallbackName;
         setDisplayName(name);
         setAvatarText(getInitialFromName(name));
-        setAvatarImage(profile?.profileImage || null);
+        // rider uses riderImageUrl, others use profileImage
+        setAvatarImage(profile?.profileImage || profile?.riderImageUrl || null);
       } catch {
         setDisplayName(fallbackName);
         setAvatarText(getInitialFromName(fallbackName));

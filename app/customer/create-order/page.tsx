@@ -921,14 +921,6 @@ export default function CreateOrderPage() {
             </div>
             <div className="mt-3 border-t border-emerald-200 pt-2 text-xs font-semibold text-emerald-800 space-y-1">
               <div className="flex items-center justify-between">
-                <span>ค่าซัก</span>
-                <span>฿{estimatedPrice.washPrice.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>ค่าอบผ้า</span>
-                <span>฿{estimatedPrice.dryPrice.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
                 <span>รวมค่าซัก/อบ</span>
                 <span>฿{estimatedPrice.baseLaundryPrice.toLocaleString()}</span>
               </div>

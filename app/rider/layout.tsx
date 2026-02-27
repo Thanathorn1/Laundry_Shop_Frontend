@@ -8,8 +8,11 @@ export default function RiderLayout({ children }: { children: React.ReactNode })
       <UserTopNavbar
         role="rider"
         homeHref="/rider"
-        settingsHref="/rider/profile"
-        extraItems={[{ label: "My Tasks", href: "/rider/tasks", icon: "📋" }]}
+        settingsHref="/rider/settings"
+        extraItems={[
+          { label: "Profile", href: "/rider/profile", icon: "👤" },
+          { label: "My Tasks", href: "/rider/tasks", icon: "📋" },
+        ]}
       />
       <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
     </div>

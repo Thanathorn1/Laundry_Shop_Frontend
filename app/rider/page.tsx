@@ -97,10 +97,26 @@ type Shop = {
     location?: { coordinates: number[] };
 };
 
+/**
+ * =============================================================================
+ * ระบบเส้นทางบนแผนที่สำหรับไรเดอร์
+ * =============================================================================
+ * 
+ * RouteLine เก็บข้อมูลเส้นทางสำหรับแต่ละออเดอร์:
+ * - orderId: ใช้เป็น key สำหรับ React rendering
+ * - points: array ของ [lat, lng] ที่ได้จาก fetchRoadRoute() 
+ * - color: สีเส้นทางตามสถานะ (เขียว/ฟ้า/ม่วง ฯลฯ)
+ * 
+ * การแสดงผลบนแผนที่:
+ * - ใช้ <Polyline positions={line.points} /> วาดเส้นบนแผนที่
+ * - เส้นทางวาดจากตำแหน่งไรเดอร์ปัจจุบัน -> จุดหมายปลายทาง
+ * - จุดหมายปลายทางมี pin อยู่แล้ว (ลูกค้า/ร้าน) ไม่ต้องเพิ่ม pin ใหม่
+ * =============================================================================
+ */
 type RouteLine = {
     orderId: string;
-    points: [number, number][];
-    color: string;
+    points: [number, number][];  // จุดพิกัดเส้นทางจาก OSRM
+    color: string;               // สีตามสถานะออเดอร์
 };
 
 function getUserIdFromAccessToken(token: string | null) {
@@ -127,6 +143,7 @@ export default function RiderDashboard() {
     const [shops, setShops] = useState<Shop[]>([]);
     const [handoverShopByOrderId, setHandoverShopByOrderId] = useState<Record<string, string>>({});
     const [handoverReadyByOrderId, setHandoverReadyByOrderId] = useState<Record<string, boolean>>({});
+    const [sendingAllByShopId, setSendingAllByShopId] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
@@ -495,6 +512,20 @@ export default function RiderDashboard() {
         return '#2563eb';
     };
 
+    /**
+     * =========================================================================
+     * ฟังก์ชันหาจุดหมายปลายทางสำหรับแต่ละสถานะ
+     * =========================================================================
+     * 
+     * ไรเดอร์ต้องไปที่ต่างกันขึ้นอยู่กับสถานะออเดอร์:
+     * - assigned: ไปรับของที่บ้านลูกค้า (pickupLocation)
+     * - picked_up: นำไปส่งร้านซัก (shop location)
+     * - laundry_done: ไปรับผ้าที่ร้าน (shop location)
+     * - out_for_delivery: นำไปส่งคืนลูกค้า (deliveryLocation)
+     * =========================================================================
+     */
+
+    // หาพิกัดจุดรับของ (บ้านลูกค้า)
     const getPickupTarget = (order: Order): [number, number] | null => {
         const lat = order.pickupLocation?.coordinates?.[1];
         const lon = order.pickupLocation?.coordinates?.[0];
@@ -502,6 +533,7 @@ export default function RiderDashboard() {
         return [lat, lon];
     };
 
+    // หาพิกัดจุดส่งคืน (บ้านลูกค้า หรือถ้าไม่มีใช้จุดรับแทน)
     const getDeliveryTarget = (order: Order): [number, number] | null => {
         const lat = order.deliveryLocation?.coordinates?.[1] ?? order.pickupLocation?.coordinates?.[1];
         const lon = order.deliveryLocation?.coordinates?.[0] ?? order.pickupLocation?.coordinates?.[0];
@@ -509,6 +541,7 @@ export default function RiderDashboard() {
         return [lat, lon];
     };
 
+    // หาพิกัดร้านซักที่เลือกไว้ (จาก handoverShopByOrderId หรือ shopId ที่บันทึกแล้ว)
     const getShopTarget = (order: Order): [number, number] | null => {
         const selectedShopId = handoverShopByOrderId[order._id] || (order.shopId ? String(order.shopId) : '');
         if (!selectedShopId) return null;
@@ -521,23 +554,51 @@ export default function RiderDashboard() {
         return [lat, lon];
     };
 
+    /**
+     * กำหนดจุดหมายปลายทางตามสถานะ:
+     * - assigned: ไปรับของที่บ้านลูกค้า
+     * - picked_up: นำผ้าไปส่งร้านซัก
+     * - laundry_done: ไปรับผ้าที่ร้าน (ซักเสร็จแล้ว)
+     * - out_for_delivery: นำผ้าไปส่งคืนลูกค้า
+     */
     const getRouteTargetForTask = (order: Order): [number, number] | null => {
-        if (order.status === 'assigned') return getPickupTarget(order);
-        if (order.status === 'picked_up') return getShopTarget(order);
-        if (order.status === 'laundry_done') return getShopTarget(order);
-        if (order.status === 'out_for_delivery') return getDeliveryTarget(order);
+        if (order.status === 'assigned') return getPickupTarget(order);        // ไปรับของ
+        if (order.status === 'picked_up') return getShopTarget(order);         // ไปส่งร้าน
+        if (order.status === 'laundry_done') return getShopTarget(order);      // ไปรับที่ร้าน
+        if (order.status === 'out_for_delivery') return getDeliveryTarget(order); // ส่งคืนลูกค้า
         return null;
     };
 
+    /**
+     * =========================================================================
+     * useEffect: วาดเส้นทางบนแผนที่
+     * =========================================================================
+     * 
+     * ทำงานเมื่อ:
+     * - myTasks เปลี่ยน (มีงานใหม่/สถานะเปลี่ยน)
+     * - userLocation เปลี่ยน (ไรเดอร์เคลื่อนที่)
+     * - shopsById/handoverShopByOrderId เปลี่ยน (เลือกร้านใหม่)
+     * 
+     * ขั้นตอน:
+     * 1. กรองเฉพาะงานที่ต้องเดินทาง (assigned, picked_up, laundry_done, out_for_delivery)
+     * 2. วนลูปแต่ละงาน -> หาจุดหมายปลายทาง -> เรียก fetchRoadRoute()
+     * 3. เก็บผลลัพธ์เป็น RouteLine array -> setTaskRouteLines()
+     * 4. <Polyline> จะวาดเส้นทางบนแผนที่อัตโนมัติ
+     * 
+     * หมายเหตุ: จุดหมายปลายทางมี pin อยู่แล้ว (ลูกค้า/ร้าน) ไม่ต้องเพิ่ม pin ใหม่
+     * =========================================================================
+     */
     useEffect(() => {
         let active = true;
 
         const drawRoutes = async () => {
+            // ต้องมีตำแหน่งไรเดอร์ก่อนถึงจะวาดเส้นทางได้
             if (!userLocation) {
                 setTaskRouteLines([]);
                 return;
             }
 
+            // กรองเฉพาะงานที่ต้องเดินทาง
             const moveTasks = (myTasks || []).filter((task) =>
                 ['assigned', 'picked_up', 'laundry_done', 'out_for_delivery'].includes(task.status),
             );
@@ -547,25 +608,29 @@ export default function RiderDashboard() {
                 return;
             }
 
+            // ต้นทาง = ตำแหน่งไรเดอร์ปัจจุบัน
             const origin: [number, number] = [userLocation.lat, userLocation.lon];
 
+            // วนลูปคำนวณเส้นทางแต่ละงาน (ทำพร้อมกันด้วย Promise.all)
             const lines = await Promise.all(
                 moveTasks.map(async (task) => {
-                    const target = getRouteTargetForTask(task);
+                    const target = getRouteTargetForTask(task); // หาจุดหมายตามสถานะ
                     if (!target) return null;
 
+                    // เรียก OSRM API คำนวณเส้นทางถนนจริง
                     const route = await fetchRoadRoute(origin, target);
                     if (route.points.length < 2) return null;
 
                     return {
                         orderId: task._id,
-                        points: route.points,
-                        color: routeColorByStatus(task.status),
+                        points: route.points,              // จุดพิกัดเส้นทาง
+                        color: routeColorByStatus(task.status), // สีตามสถานะ
                     } as RouteLine;
                 }),
             );
 
             if (!active) return;
+            // บันทึกเส้นทางทั้งหมด -> <Polyline> จะวาดบนแผนที่
             setTaskRouteLines(lines.filter((line): line is RouteLine => Boolean(line)));
         };
 
@@ -761,6 +826,50 @@ export default function RiderDashboard() {
         });
     };
 
+    const sendAllPickedUpToShop = async (shopId: string) => {
+        if (!pickedUpOrders.length) return;
+
+        setSendingAllByShopId((prev) => ({ ...prev, [shopId]: true }));
+
+        try {
+            setHandoverShopByOrderId((prev) => {
+                const next = { ...prev };
+                pickedUpOrders.forEach((order) => {
+                    next[order._id] = shopId;
+                });
+                return next;
+            });
+
+            await Promise.allSettled(
+                pickedUpOrders.map((order) => selectShopForOrder(order._id, shopId)),
+            );
+
+            const handoverResults = await Promise.allSettled(
+                pickedUpOrders.map((order) =>
+                    apiFetch(`/rider/handover/${order._id}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ shopId }),
+                    }),
+                ),
+            );
+
+            const sentCount = handoverResults.filter((result) => result.status === 'fulfilled').length;
+            const failedCount = handoverResults.length - sentCount;
+
+            if (failedCount > 0) {
+                alert(`Sent ${sentCount}/${handoverResults.length} orders to shop (${failedCount} failed)`);
+            }
+
+            if (sentCount > 0) {
+                await fetchData();
+            }
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : String(err));
+        } finally {
+            setSendingAllByShopId((prev) => ({ ...prev, [shopId]: false }));
+        }
+    };
+
     const pickUpLaundryFromShop = async (orderId: string) => {
         try {
             await apiFetch(`/rider/return-delivery/${orderId}`, { method: 'PATCH' });
@@ -837,10 +946,13 @@ export default function RiderDashboard() {
                                 />
                                 <MapController center={mapView.center} zoom={mapView.zoom} />
 
+                                {/* วาดเส้นทางถนนจากไรเดอร์ไปจุดหมาย (Polyline) */}
+                                {/* points มาจาก fetchRoadRoute() -> เส้นทางถนนจริงจาก OSRM */}
+                                {/* สีเส้นแตกต่างตามสถานะงาน (assigned/picked_up/laundry_done/out_for_delivery) */}
                                 {taskRouteLines.map((line) => (
                                     <Polyline
                                         key={`route-${line.orderId}`}
-                                        positions={line.points}
+                                        positions={line.points}  // จุดพิกัดเส้นทาง [lat, lng][]
                                         pathOptions={{ color: line.color, weight: 5, opacity: 0.85 }}
                                     />
                                 ))}
@@ -895,6 +1007,65 @@ export default function RiderDashboard() {
                                                 ) : null}
                                                 <span className="text-[10px] font-black text-rose-700 bg-rose-50 px-2 py-1 rounded">S/M/L {machineS}/{machineM}/{machineL}</span>
                                             </div>
+
+                                            {/* Send picked-up orders to this shop */}
+                                            {pickedUpOrders.length > 0 && (
+                                                <div className="mt-3 border-t border-slate-100 pt-2">
+                                                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                                                        <p className="text-[9px] font-black text-sky-600 uppercase tracking-widest">Send order to this shop</p>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                sendAllPickedUpToShop(shop._id);
+                                                            }}
+                                                            disabled={!!sendingAllByShopId[shop._id]}
+                                                            className="text-[9px] font-black text-white bg-emerald-600 px-2 py-1 rounded-md hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                                                        >
+                                                            {sendingAllByShopId[shop._id] ? 'Sending...' : `Send all (${pickedUpOrders.length})`}
+                                                        </button>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        {pickedUpOrders.map((order) => {
+                                                            const isSelected = handoverShopByOrderId[order._id] === shop._id;
+                                                            return (
+                                                                <div key={`pin-send-${order._id}`} className="flex items-center justify-between gap-1.5 rounded-lg bg-sky-50 px-2 py-1.5 border border-sky-100">
+                                                                    <p className="text-[10px] font-bold text-slate-700 line-clamp-1 flex-1">
+                                                                        {order.customerName || order.productName || 'Order'}
+                                                                    </p>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (!isSelected) {
+                                                                                    setHandoverShopByOrderId((prev) => ({ ...prev, [order._id]: shop._id }));
+                                                                                    selectShopForOrder(order._id, shop._id).catch(() => {});
+                                                                                    const coords = shop.location?.coordinates;
+                                                                                    if (Array.isArray(coords) && coords.length >= 2) {
+                                                                                        setMapView({ center: [coords[1], coords[0]], zoom: 16 });
+                                                                                    }
+                                                                                } else {
+                                                                                    handoverToShop(order._id, shop._id);
+                                                                                }
+                                                                            }}
+                                                                            className={`text-[10px] font-black text-white px-2.5 py-1 rounded-lg whitespace-nowrap ${isSelected ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-600 hover:bg-sky-700'}`}
+                                                                        >
+                                                                            {isSelected ? 'Send' : 'Select'}
+                                                                        </button>
+                                                                        {isSelected && (
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); cancelShopSelection(order._id); }}
+                                                                                className="text-[10px] font-black text-slate-600 bg-slate-200 px-2 py-1 rounded-lg hover:bg-slate-300 whitespace-nowrap"
+                                                                            >
+                                                                                ✕
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {readyTasksAtShop.length > 0 && (
                                                 <div className="mt-3 space-y-2 border-t border-slate-100 pt-2">
@@ -1388,7 +1559,19 @@ export default function RiderDashboard() {
                                                         {/* Send picked-up orders to this shop */}
                                                         {pickedUpOrders.length > 0 && (
                                                             <div className="mt-3 pt-3 border-t border-slate-100">
-                                                                <p className="text-[9px] font-black text-sky-600 uppercase tracking-widest mb-2">Send order to this shop</p>
+                                                                <div className="mb-2 flex items-center justify-between gap-2">
+                                                                    <p className="text-[9px] font-black text-sky-600 uppercase tracking-widest">Send order to this shop</p>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            sendAllPickedUpToShop(shop._id);
+                                                                        }}
+                                                                        disabled={!!sendingAllByShopId[shop._id]}
+                                                                        className="text-[9px] font-black text-white bg-emerald-600 px-2.5 py-1.5 rounded-xl hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                                                                    >
+                                                                        {sendingAllByShopId[shop._id] ? 'Sending...' : `Send all (${pickedUpOrders.length})`}
+                                                                    </button>
+                                                                </div>
                                                                 <div className="space-y-2">
                                                                     {pickedUpOrders.map((order) => (
                                                                         <div key={order._id} className="flex items-center justify-between gap-2 bg-sky-50/50 rounded-xl px-3 py-2 border border-sky-100">

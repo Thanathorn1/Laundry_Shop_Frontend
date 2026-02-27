@@ -5,6 +5,20 @@ import { useEffect, useRef, useState } from 'react';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import { fetchRoadRoute } from '@/lib/road-route';
 
+/**
+ * =============================================================================
+ * หน้า Employee Dashboard
+ * =============================================================================
+ * 
+ * แสดงแผนที่พร้อมตำแหน่งร้านซักที่พนักงานดูแลและไรเดอร์ที่กำลังเดินทางมา
+ * 
+ * การใช้เส้นทาง:
+ * - เมื่อมีไรเดอร์กำลังนำผ้ามาส่งร้าน (picked_up/laundry_done)
+ * - เรียก fetchRoadRoute() คำนวณเส้นทางจากไรเดอร์ถึงร้าน
+ * - วาด polyline บนแผนที่ให้เห็นเส้นทางไรเดอร์ที่กำลังเข้าร้าน
+ * =============================================================================
+ */
+
 type Shop = {
   _id: string;
   shopName?: string;
@@ -38,6 +52,7 @@ type LeafletCircleMarker = {
   remove: () => void;
 };
 
+// ประเภท polyline สำหรับวาดเส้นทางบนแผนที่ (Leaflet)
 type LeafletPolyline = {
   addTo: (map: LeafletMap) => LeafletPolyline;
   bindPopup: (content: string) => LeafletPolyline;
@@ -65,6 +80,12 @@ type ShopOrder = {
   createdAt?: string;
 };
 
+/**
+ * RiderOverlay เก็บข้อมูลไรเดอร์แต่ละคนที่กำลังเดินทาง
+ * - riderLat/riderLng: ตำแหน่งปัจจุบันของไรเดอร์
+ * - routePoints: เส้นทางจาก fetchRoadRoute() สำหรับวาด polyline
+ * - status: สถานะของออเดอร์
+ */
 type RiderOverlay = {
   key: string;
   riderId: string;
@@ -340,6 +361,7 @@ export default function EmployeePage() {
               if (!accessibleShopIds.has(String(shop._id))) continue;
 
               try {
+                // ดึงตำแหน่งไรเดอร์แบบ real-time
                 const riderLocation = await apiFetch(`/rider/location/${riderId}`);
                 const riderCoords = riderLocation?.location?.coordinates;
                 if (!Array.isArray(riderCoords) || riderCoords.length < 2) continue;
@@ -348,13 +370,15 @@ export default function EmployeePage() {
                 const riderLat = Number(riderCoords[1]);
                 if (!Number.isFinite(riderLat) || !Number.isFinite(riderLng)) continue;
 
-                let routePoints: [number, number][] = [];
+                let routePoints: [number, number][] = [];  // เส้นทางสำหรับวาด polyline
                 const status = String(order?.status || 'unknown');
+                // แสดงเส้นทางไปร้านเฉพาะสถานะ picked_up (กำลังเอาผ้ามาส่ง) หรือ laundry_done (กำลังมารับ)
                 const shouldShowRouteToShop = ['picked_up', 'laundry_done'].includes(status);
 
                 if (shouldShowRouteToShop && Number.isFinite(shopLat) && Number.isFinite(shopLng)) {
+                  // เรียก OSRM API คำนวณเส้นทางถนนจากไรเดอร์ถึงร้าน
                   const route = await fetchRoadRoute([riderLat, riderLng], [Number(shopLat), Number(shopLng)]);
-                  routePoints = route.points;
+                  routePoints = route.points; // จุดพิกัดเส้นทาง
                 }
 
                 overlays.push({
@@ -391,20 +415,34 @@ export default function EmployeePage() {
     };
   }, [shops]);
 
+/**
+   * =========================================================================
+   * useEffect: วาดเส้นทางไรเดอร์บนแผนที่
+   * =========================================================================
+   * 
+   * วาด polyline และ pin ไรเดอร์บนแผนที่ตามข้อมูล riderOverlays
+   * - เส้นทางสีฟ้าแสดงไรเดอร์ที่กำลังมาร้าน
+   * - ปักหมุดตำแหน่งไรเดอร์เป็นจุดสีฟ้า
+   * - จุดหมายปลายทาง (ร้าน) มี pin อยู่แล้ว ไม่ต้องเพิ่ม
+   * =========================================================================
+   */
   useEffect(() => {
     const map = mapRef.current;
     const L = leafletRef.current;
     if (!map || !L) return;
 
+    // ล้าง pin/polyline เดิมก่อนวาดใหม่
     riderMarkersRef.current.forEach((item) => item.remove());
     riderMarkersRef.current = [];
     riderRouteLinesRef.current.forEach((line) => line.remove());
     riderRouteLinesRef.current = [];
 
+    // วนลูปไรเดอร์แต่ละคน
     riderOverlays.forEach((overlay) => {
+      // วาดเส้นทางถ้ามีข้อมูล (points >= 2)
       if (overlay.routePoints.length >= 2) {
         const routeLine = L.polyline(overlay.routePoints, {
-          color: '#2563eb',
+          color: '#2563eb',   // สีฟ้า
           weight: 4,
           opacity: 0.85,
         })
@@ -413,6 +451,7 @@ export default function EmployeePage() {
         riderRouteLinesRef.current.push(routeLine);
       }
 
+      // ปักหมุดตำแหน่งไรเดอร์ (จุดสีฟ้า)
       const riderPin = L.circleMarker([overlay.riderLat, overlay.riderLng], {
         radius: 7,
         color: '#1d4ed8',

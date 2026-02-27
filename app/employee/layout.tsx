@@ -8,8 +8,8 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
       <UserTopNavbar
         role="employee"
         homeHref="/employee"
-        settingsHref="/employee"
-        extraItems={[{ label: "User Management", href: "/employee/users", icon: "👥" }]}
+        settingsHref="/employee/settings"
+        extraItems={[]}
       />
       <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
     </div>

@@ -621,6 +621,15 @@ export default function CustomerPage() {
         return options;
     }, [editPickupDate]);
 
+    const editPriceSummary = useMemo(() => {
+        return calculateOrderPriceSummary({
+            laundryType: editLaundryType,
+            weightCategory: editWeightCategory,
+            serviceTimeMinutes: editServiceTimeMinutes,
+            pickupType: editPickupType,
+        });
+    }, [editLaundryType, editWeightCategory, editServiceTimeMinutes, editPickupType]);
+
     useEffect(() => {
         if (editPickupType !== 'schedule') return;
         if (!editPickupDate) {
@@ -704,6 +713,23 @@ export default function CustomerPage() {
         };
     }, [trackedOrder?.riderId]);
 
+    /**
+     * =========================================================================
+     * useEffect: คำนวณเส้นทางติดตามออเดอร์สำหรับลูกค้า
+     * =========================================================================
+     * 
+     * แสดงเส้นทางถนนจริงจากไรเดอร์/จุดรับ/ร้านซัก ไปยังจุดหมายต่างๆ
+     * 
+     * การแสดงผลตามสถานะ:
+     * - assigned: ไรเดอร์กำลังมารับของ -> วาดเส้นจากตำแหน่งไรเดอร์ถึงบ้านลูกค้า
+     * - picked_up: ไรเดอร์กำลังนำผ้าไปร้านซัก -> วาดเส้นจากไรเดอร์ถึงร้าน
+     * - at_shop/washing/drying: กำลังซักที่ร้าน -> วาดเส้นจากจุดรับถึงร้าน
+     * - laundry_done: ซักเสร็จ รอไรเดอร์มารับ -> วาดเส้นไรเดอร์ถึงร้าน
+     * - out_for_delivery: ไรเดอร์กำลังส่งคืน -> วาดเส้นจากไรเดอร์ถึงบ้านลูกค้า
+     * 
+     * จุดหมายปลายทางมี pin อยู่แล้ว (บ้านลูกค้า/ร้านซัก)
+     * =========================================================================
+     */
     useEffect(() => {
         let cancelled = false;
 
@@ -714,35 +740,43 @@ export default function CustomerPage() {
                 return;
             }
 
-            const pickupPoint = getPickupPoint(trackedOrder);
-            const deliveryPoint = getDeliveryPoint(trackedOrder);
-            const shopPoint = getShopPoint(trackedOrder);
+            // หาพิกัดที่เกี่ยวข้องกับออเดอร์
+            const pickupPoint = getPickupPoint(trackedOrder);   // บ้านลูกค้า
+            const deliveryPoint = getDeliveryPoint(trackedOrder); // บ้านส่งคืน
+            const shopPoint = getShopPoint(trackedOrder);        // ร้านซัก
 
-            let origin: [number, number] | null = null;
-            let target: [number, number] | null = null;
+            let origin: [number, number] | null = null;  // ต้นทางเส้น
+            let target: [number, number] | null = null;  // ปลายทางเส้น
             let label = '';
 
+            // กำหนดต้นทาง-ปลายทางตามสถานะออเดอร์
             if (trackedOrder.status === 'assigned') {
+                // ไรเดอร์กำลังเดินทางมารับของ
                 origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : null;
                 target = pickupPoint;
                 label = 'Rider is coming to pickup point';
             } else if (trackedOrder.status === 'picked_up') {
+                // ไรเดอร์กำลังนำผ้าไปส่งร้านซัก
                 origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : pickupPoint;
                 target = shopPoint;
                 label = 'Rider is heading to laundry shop';
             } else if (trackedOrder.status === 'at_shop' || trackedOrder.status === 'washing' || trackedOrder.status === 'drying') {
+                // ผ้ากำลังซักที่ร้าน
                 origin = pickupPoint;
                 target = shopPoint;
                 label = 'Laundry is being processed at shop';
             } else if (trackedOrder.status === 'laundry_done') {
+                // ซักเสร็จแล้ว รอไรเดอร์มารับ
                 origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : shopPoint;
                 target = shopPoint;
                 label = 'Laundry ready at shop';
             } else if (trackedOrder.status === 'out_for_delivery') {
+                // ไรเดอร์กำลังส่งผ้าคืนลูกค้า
                 origin = riderLiveLocation ? [riderLiveLocation.lat, riderLiveLocation.lng] : shopPoint;
                 target = deliveryPoint;
                 label = 'Rider is returning your laundry';
             } else {
+                // รอไรเดอร์รับงาน
                 target = pickupPoint;
                 label = 'Waiting for rider assignment';
             }
@@ -754,18 +788,20 @@ export default function CustomerPage() {
                 return;
             }
 
+            // เรียก OSRM API คำนวณเส้นทางถนนจริง
             const route = await fetchRoadRoute(origin, target);
-            const points = route.points;
+            const points = route.points;  // จุดพิกัดสำหรับวาด Polyline
 
             if (cancelled) return;
 
+            // บันทึกเส้นทางและสรุปข้อมูล (km/นาที)
             setTrackingRoutePoints(points);
             setTrackingSummary({
                 label,
                 distanceKm: route.distanceKm,
                 durationMin: route.durationMin,
             });
-            setTrackingMapView({ center: target, zoom: 14 });
+            setTrackingMapView({ center: target, zoom: 14 }); // เลื่อนแผนที่ไปยังจุดหมาย
         };
 
         computeTrackingRoute();
@@ -982,6 +1018,34 @@ export default function CustomerPage() {
                                         <p className="text-xs font-semibold text-blue-700/70">Schedule pickup ฟรี และต้องมากกว่าเวลาปัจจุบันอย่างน้อย 1 ชั่วโมง</p>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Auto Price Summary */}
+                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Auto Price</p>
+                                <p className="mt-1 text-lg font-black text-emerald-800">฿{editPriceSummary.totalPrice.toLocaleString()}</p>
+                                <div className="mt-1 space-y-1 text-xs font-semibold text-emerald-700/90">
+                                    <p>สูตรค่าซัก: {editLaundryType === 'dry' ? '0 บาท (Dry only)' : `(${editServiceTimeMinutes} ÷ 50) × ${getWashUnitPrice(editWeightCategory)} บาท`}</p>
+                                    <p>สูตรค่าอบผ้า: ({editServiceTimeMinutes} ÷ 50) × 20 บาท</p>
+                                </div>
+                                <div className="mt-3 border-t border-emerald-200 pt-2 text-xs font-semibold text-emerald-800 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <span>รวมค่าซัก/อบ</span>
+                                        <span>฿{editPriceSummary.baseLaundryPrice.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span>ค่าจัดส่ง</span>
+                                        <span>฿{editPriceSummary.deliveryFee.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span>{editPickupType === 'now' ? 'ค่าบริการ Pickup Now' : 'ค่าบริการ Pickup Schedule'}</span>
+                                        <span>฿{editPriceSummary.pickupServiceFee.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between border-t border-emerald-200 pt-1 font-black">
+                                        <span>รวมสุทธิ</span>
+                                        <span>฿{editPriceSummary.totalPrice.toLocaleString()}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div className="mt-6 flex gap-3">
@@ -1207,9 +1271,12 @@ export default function CustomerPage() {
                                         />
                                         <MapController center={trackingMapView.center} zoom={trackingMapView.zoom} />
 
+                                        {/* วาดเส้นทางถนนติดตามออเดอร์ (Polyline) */}
+                                        {/* points มาจาก fetchRoadRoute() -> เส้นถนนจริงจาก OSRM */}
+                                        {/* สีเส้นเปลี่ยนตามสถานะ (assigned/picked_up/อื่นๆ) */}
                                         {trackingRoutePoints.length >= 2 && (
                                             <Polyline
-                                                positions={trackingRoutePoints}
+                                                positions={trackingRoutePoints}  // จุดพิกัดเส้นทาง [lat, lng][]
                                                 pathOptions={{ color: trackingRouteColor, weight: 5, opacity: 0.85 }}
                                             />
                                         )}

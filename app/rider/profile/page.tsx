@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { apiFetch, apiUpload, API_BASE_URL } from '@/lib/api';
 
 interface RiderProfile {
-    fullName: string;
+    firstName: string;
+    lastName: string;
     licensePlate: string;
     drivingLicense: string;
     phone: string;
@@ -25,7 +26,8 @@ export default function RiderProfile() {
     }, []);
 
     const emptyProfile: RiderProfile = {
-        fullName: '',
+        firstName: '',
+        lastName: '',
         licensePlate: '',
         drivingLicense: '',
         phone: '',
@@ -38,7 +40,8 @@ export default function RiderProfile() {
     const normalizeProfile = (input: unknown): RiderProfile => {
         const source = (input && typeof input === 'object') ? (input as Record<string, unknown>) : {};
         return {
-            fullName: typeof source.fullName === 'string' ? source.fullName : '',
+            firstName: typeof source.firstName === 'string' ? source.firstName : '',
+            lastName: typeof source.lastName === 'string' ? source.lastName : '',
             licensePlate: typeof source.licensePlate === 'string' ? source.licensePlate : '',
             drivingLicense: typeof source.drivingLicense === 'string' ? source.drivingLicense : '',
             phone: typeof source.phone === 'string' ? source.phone : '',
@@ -87,7 +90,8 @@ export default function RiderProfile() {
         try {
             setIsUpdating(true);
             const formData = new FormData();
-            formData.append('fullName', profile.fullName);
+            formData.append('firstName', profile.firstName);
+            formData.append('lastName', profile.lastName);
             formData.append('licensePlate', profile.licensePlate);
             formData.append('drivingLicense', profile.drivingLicense);
             formData.append('phone', profile.phone);
@@ -97,6 +101,7 @@ export default function RiderProfile() {
             // For images, we provide separate upload buttons or handle them in the same PATCH
             await apiUpload('/rider/profile', formData);
             alert('Profile updated successfully');
+            window.dispatchEvent(new Event('profile:updated'));
             fetchProfile();
         } catch (err: unknown) {
             if (err instanceof Error) {
@@ -116,7 +121,8 @@ export default function RiderProfile() {
             formData.append(field, file);
             // We also need to send the rest of the profile data as the backend expect the whole DTO
             if (profile) {
-                formData.append('fullName', profile.fullName);
+                formData.append('firstName', profile.firstName);
+                formData.append('lastName', profile.lastName);
                 formData.append('licensePlate', profile.licensePlate);
                 formData.append('drivingLicense', profile.drivingLicense);
                 formData.append('phone', profile.phone);
@@ -125,6 +131,7 @@ export default function RiderProfile() {
 
             await apiUpload('/rider/profile', formData);
             alert('Image uploaded successfully');
+            window.dispatchEvent(new Event('profile:updated'));
             fetchProfile();
         } catch (err: unknown) {
             if (err instanceof Error) {
@@ -183,6 +190,13 @@ export default function RiderProfile() {
         </div>
     );
 
+    const ASSET_BASE = API_BASE_URL.replace(/\/api\/?$/, '');
+    const resolveImg = (url?: string) => {
+        if (!url) return '';
+        if (url.startsWith('http')) return url;
+        return `${ASSET_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+    };
+
     return (
         <div className="p-8">
             <div className="max-w-3xl bg-white p-10 rounded-[2rem] shadow-2xl shadow-blue-100/50 border border-white">
@@ -197,7 +211,7 @@ export default function RiderProfile() {
                         <div className="relative h-48 w-48 overflow-hidden rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 transition-all hover:border-blue-400 hover:bg-white group cursor-pointer shadow-inner">
                             {profile.riderImageUrl ? (
                                 <img
-                                    src={profile.riderImageUrl.startsWith('http') ? profile.riderImageUrl : `${API_BASE_URL}${profile.riderImageUrl}`}
+                                    src={resolveImg(profile.riderImageUrl)}
                                     alt="Rider"
                                     className="h-full w-full object-cover transition-transform group-hover:scale-110"
                                 />
@@ -219,7 +233,7 @@ export default function RiderProfile() {
                         <div className="relative h-48 w-48 overflow-hidden rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 transition-all hover:border-sky-400 hover:bg-white group cursor-pointer shadow-inner">
                             {profile.vehicleImageUrl ? (
                                 <img
-                                    src={profile.vehicleImageUrl.startsWith('http') ? profile.vehicleImageUrl : `${API_BASE_URL}${profile.vehicleImageUrl}`}
+                                    src={resolveImg(profile.vehicleImageUrl)}
                                     alt="Vehicle"
                                     className="h-full w-full object-cover transition-transform group-hover:scale-110"
                                 />
@@ -239,14 +253,24 @@ export default function RiderProfile() {
                 </div>
 
                 <form onSubmit={handleUpdate} className="grid sm:grid-cols-2 gap-6">
-                    <div className="sm:col-span-2">
-                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">Legal Full Name</label>
+                    <div>
+                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">First Name</label>
                         <input
                             type="text"
                             className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
-                            placeholder="John Doe"
-                            value={profile.fullName}
-                            onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                            placeholder="John"
+                            value={profile.firstName}
+                            onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-1.5 block text-[10px] font-black text-blue-300 uppercase tracking-widest">Last Name</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-xl border border-blue-50 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
+                            placeholder="Doe"
+                            value={profile.lastName}
+                            onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
                         />
                     </div>
                     <div>
