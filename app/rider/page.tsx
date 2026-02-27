@@ -306,7 +306,12 @@ export default function RiderDashboard() {
                         setMapView({ center: [coords.lat, coords.lon], zoom: 13 });
                     }
                 },
-                (err) => console.error("Geolocation error:", err),
+                (err) => {
+                    if (err.code === err.PERMISSION_DENIED && watchId !== undefined) {
+                        navigator.geolocation.clearWatch(watchId);
+                    }
+                    // Keep dashboard usable with default map center when geolocation is unavailable.
+                },
                 { enableHighAccuracy: true }
             );
         }

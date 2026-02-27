@@ -70,7 +70,7 @@ export default function UserTopNavbar({ role, homeHref, settingsHref, extraItems
       const endpointByRole: Record<Role, string> = {
         user: "/customers/me",
         rider: "/rider/profile",
-        employee: "/employees/me",
+        employee: "/employee/me",
         admin: "/admins/me",
       };
 

@@ -11,6 +11,7 @@ type EmployeeProfile = {
   lastName?: string;
   email?: string;
   phoneNumber?: string;
+  profileImage?: string;
 };
 
 export default function EmployeeSettingsPage() {
@@ -24,6 +25,8 @@ export default function EmployeeSettingsPage() {
   const [formFirstName, setFormFirstName] = useState('');
   const [formLastName, setFormLastName] = useState('');
   const [formPhone, setFormPhone] = useState('');
+  const [formProfileImagePreview, setFormProfileImagePreview] = useState<string | null>(null);
+  const [formProfileImageBase64, setFormProfileImageBase64] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -35,6 +38,9 @@ export default function EmployeeSettingsPage() {
         setFormFirstName((safeProfile.firstName || '').trim());
         setFormLastName((safeProfile.lastName || '').trim());
         setFormPhone((safeProfile.phoneNumber || '').trim());
+        if (safeProfile.profileImage) {
+          setFormProfileImagePreview(safeProfile.profileImage);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load profile');
       } finally {
@@ -57,9 +63,14 @@ export default function EmployeeSettingsPage() {
           firstName: formFirstName.trim(),
           lastName: formLastName.trim(),
           phoneNumber: formPhone.trim(),
+          ...(formProfileImageBase64 ? { profileImage: formProfileImageBase64 } : {}),
         }),
       });
       setProfile((updated || {}) as EmployeeProfile);
+      setFormProfileImageBase64(null);
+      if ((updated as EmployeeProfile | null)?.profileImage) {
+        setFormProfileImagePreview((updated as EmployeeProfile).profileImage || null);
+      }
       setSuccess('Profile updated successfully');
       window.dispatchEvent(new Event('profile:updated'));
     } catch (err) {
@@ -154,6 +165,49 @@ export default function EmployeeSettingsPage() {
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-blue-900 font-bold outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
                 placeholder="08X-XXX-XXXX"
               />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] font-black text-blue-400 uppercase tracking-widest">Profile Image</label>
+              <div className="mb-2 flex items-center gap-3">
+                {formProfileImagePreview ? (
+                  <img src={formProfileImagePreview} alt="Profile" className="h-16 w-16 rounded-full border-2 border-blue-100 object-cover shadow" />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-lg font-black text-blue-700">
+                    {((formFirstName || profile?.firstName || 'E').trim().charAt(0) || 'E').toUpperCase()}
+                  </div>
+                )}
+                <label className="inline-flex cursor-pointer items-center rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-blue-700 hover:border-blue-400">
+                  Choose image
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith('image/')) {
+                        setError('Please select an image file');
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const result = typeof reader.result === 'string' ? reader.result : null;
+                        if (!result) {
+                          setError('Failed to read selected image');
+                          return;
+                        }
+                        setFormProfileImagePreview(result);
+                        setFormProfileImageBase64(result);
+                        setError(null);
+                      };
+                      reader.onerror = () => setError('Failed to read selected image');
+                      reader.readAsDataURL(file);
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+              </div>
             </div>
 
             <div>
