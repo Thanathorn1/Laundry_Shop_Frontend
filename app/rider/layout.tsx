@@ -108,7 +108,7 @@ export default function RiderLayout({
                 {children}
             </main>
 
-            <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 backdrop-blur md:hidden">
+            <footer className="fixed inset-x-0 bottom-0 z-[1200] border-t border-slate-200 bg-white/95 p-3 backdrop-blur md:hidden">
                 <div className="grid grid-cols-4 gap-2">
                     <Link href="/rider" className="flex flex-col items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-2 py-2 text-[11px] font-black text-blue-700">
                         <span className="text-base">📦</span>

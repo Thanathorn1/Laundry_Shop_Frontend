@@ -520,7 +520,7 @@ export default function CreateOrderPage() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-blue-900">
-      <aside className="hidden md:block w-72 border-r border-slate-200 bg-white p-8 shadow-sm h-screen sticky top-0">
+      <aside className="hidden md:block w-72 border-r border-blue-50 bg-white p-8 shadow-sm h-screen sticky top-0">
         <div className="flex items-center gap-3 mb-10">
           <div className="h-10 w-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
             <span className="text-white font-black text-xl">C</span>
@@ -537,8 +537,12 @@ export default function CreateOrderPage() {
             New Order
           </Link>
           <Link href="/customer/history" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
-            <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">🗒️</span>
+            <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">�️</span>
             History
+          </Link>
+          <Link href="/customer/settings" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+            <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">⚙️</span>
+            Settings
           </Link>
 
           {isAdminSession && (
@@ -582,8 +586,8 @@ export default function CreateOrderPage() {
         </nav>
       </aside>
 
-      <main className="flex-1 p-6 pb-24 md:pb-6">
-      <div className="mx-auto w-full max-w-3xl rounded-[2rem] border border-white bg-white p-8 shadow-2xl shadow-blue-100/50">
+      <main className="flex-1 p-6 pb-24 md:p-12 md:pb-12">
+        <div className="mx-auto w-full max-w-3xl rounded-[2rem] border border-white bg-white p-8 shadow-2xl shadow-blue-100/50">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl font-black tracking-tight">Create Order</h1>
           <Link href="/customer" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50">
@@ -957,8 +961,8 @@ export default function CreateOrderPage() {
       </div>
       </main>
 
-      <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 backdrop-blur md:hidden">
-        <div className="grid grid-cols-4 gap-2">
+      <footer className="fixed inset-x-0 bottom-0 z-[1200] border-t border-slate-200 bg-white/95 p-3 backdrop-blur md:hidden">
+        <div className="grid grid-cols-5 gap-2">
           <Link href="/customer" className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70">
             <span className="text-base">🏠</span>
             Dashboard
@@ -968,8 +972,12 @@ export default function CreateOrderPage() {
             New Order
           </Link>
           <Link href="/customer/history" className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70">
-            <span className="text-base">🗒️</span>
+            <span className="text-base">�️</span>
             History
+          </Link>
+          <Link href="/customer/settings" className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70">
+            <span className="text-base">⚙️</span>
+            Settings
           </Link>
           <button
             onClick={() => {

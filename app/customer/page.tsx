@@ -214,6 +214,9 @@ export default function CustomerPage() {
     const [editPickupType, setEditPickupType] = useState<'now' | 'schedule'>('now');
     const [editPickupDate, setEditPickupDate] = useState('');
     const [editPickupTime, setEditPickupTime] = useState('');
+    const [editLaundryType, setEditLaundryType] = useState<'wash' | 'dry'>('wash');
+    const [editWeightCategory, setEditWeightCategory] = useState<'s' | 'm' | 'l'>('s');
+    const [editServiceTimeMinutes, setEditServiceTimeMinutes] = useState(50);
     const [editSaving, setEditSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [isAdminSession, setIsAdminSession] = useState(false);
@@ -223,6 +226,7 @@ export default function CustomerPage() {
         center: [13.7563, 100.5018],
         zoom: 13,
     });
+    const [hasMounted, setHasMounted] = useState(false);
     const [trackingRoutePoints, setTrackingRoutePoints] = useState<[number, number][]>([]);
     const [trackingSummary, setTrackingSummary] = useState<{ label: string; distanceKm: number | null; durationMin: number | null } | null>(null);
 
@@ -230,6 +234,10 @@ export default function CustomerPage() {
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        setHasMounted(true);
+    }, []);
 
     useEffect(() => {
         let active = true;
@@ -478,6 +486,9 @@ export default function CustomerPage() {
         setEditContactPhone(order.contactPhone || '');
         setEditPickupAddress(order.pickupAddress || '');
         setEditPickupType(order.pickupType || 'now');
+        setEditLaundryType(order.laundryType || 'wash');
+        setEditWeightCategory((order.weightCategory as 's' | 'm' | 'l') || 's');
+        setEditServiceTimeMinutes(order.serviceTimeMinutes || 50);
         setEditBasketPhotos([]);
 
         const coordinates = order.pickupLocation?.coordinates;
@@ -543,6 +554,9 @@ export default function CustomerPage() {
                     pickupAddress: editPickupAddress,
                     pickupType: editPickupType,
                     pickupAt,
+                    laundryType: editLaundryType,
+                    weightCategory: editWeightCategory,
+                    serviceTimeMinutes: editServiceTimeMinutes,
                     images: editBasketPhotos.length ? await filesToBase64(editBasketPhotos) : undefined,
                 }),
             });
@@ -783,7 +797,7 @@ export default function CustomerPage() {
         <div className="flex min-h-screen bg-slate-50 font-sans text-blue-900">
             {/* Edit Modal */}
             {editingOrder && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/40 p-4">
                     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl">
                         <h3 className="text-xl font-black text-blue-900 mb-6">Edit Order</h3>
                         <div className="space-y-4">
@@ -826,6 +840,46 @@ export default function CustomerPage() {
                                     onChange={e => setEditContactPhone(e.target.value)}
                                     className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
                                 />
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                <div>
+                                    <label className="mb-1 block text-sm font-bold text-blue-900">Laundry Type</label>
+                                    <select
+                                        value={editLaundryType}
+                                        onChange={e => setEditLaundryType(e.target.value as 'wash' | 'dry')}
+                                        className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
+                                    >
+                                        <option value="wash">Wash + Dry Laundry</option>
+                                        <option value="dry">Dry Only Laundry</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-sm font-bold text-blue-900">Weight (kg)</label>
+                                    <select
+                                        value={editWeightCategory}
+                                        onChange={e => setEditWeightCategory(e.target.value as 's' | 'm' | 'l')}
+                                        className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
+                                    >
+                                        <option value="s">S (0 - 4 kg)</option>
+                                        <option value="m">M (6 - 10 kg)</option>
+                                        <option value="l">L (10 - 20 kg)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-sm font-bold text-blue-900">Drying Time (อบผ้า กี่นาที)</label>
+                                    <select
+                                        value={String(editServiceTimeMinutes)}
+                                        onChange={e => setEditServiceTimeMinutes(Number(e.target.value))}
+                                        className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
+                                    >
+                                        <option value="50">50 min</option>
+                                        <option value="75">75 min</option>
+                                        <option value="100">100 min</option>
+                                        <option value="125">125 min</option>
+                                        <option value="150">150 min</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -962,17 +1016,20 @@ export default function CustomerPage() {
                         <span className="mr-3 text-lg">🏠</span>
                         Dashboard
                     </Link>
-                    <button
-                        type="button"
-                        onClick={openNewOrder}
+                    <Link
+                        href="/customer/create-order"
                         className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group text-left"
                     >
                         <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">➕</span>
                         New Order
-                    </button>
+                    </Link>
                     <Link href="/customer/history" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
-                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">📅</span>
+                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">�️</span>
                         History
+                    </Link>
+                    <Link href="/customer/settings" className="flex items-center w-full rounded-xl px-4 py-3 text-sm font-bold text-blue-700/60 hover:bg-blue-50 hover:text-blue-700 transition-all group">
+                        <span className="mr-3 text-lg opacity-50 group-hover:opacity-100">⚙️</span>
+                        Settings
                     </Link>
                     {isAdminSession && (
                         <>
@@ -1136,7 +1193,7 @@ export default function CustomerPage() {
                             </div>
 
                             <div className="overflow-hidden rounded-3xl border border-slate-100 bg-slate-50">
-                                {typeof window !== 'undefined' && (
+                                {hasMounted ? (
                                     <MapContainer
                                         center={trackingMapView.center}
                                         zoom={trackingMapView.zoom}
@@ -1181,6 +1238,8 @@ export default function CustomerPage() {
                                             </Marker>
                                         )}
                                     </MapContainer>
+                                ) : (
+                                    <div className="h-[320px] w-full" />
                                 )}
                             </div>
 
@@ -1224,23 +1283,26 @@ export default function CustomerPage() {
                 </div>
             </main>
 
-            <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 backdrop-blur md:hidden">
-                <div className="grid grid-cols-4 gap-2">
+            <footer className="fixed inset-x-0 bottom-0 z-[1200] border-t border-slate-200 bg-white/95 p-3 backdrop-blur md:hidden">
+                <div className="grid grid-cols-5 gap-2">
                     <Link href="/customer" className="flex flex-col items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-2 py-2 text-[11px] font-black text-blue-700">
                         <span className="text-base">🏠</span>
                         Dashboard
                     </Link>
-                    <button
-                        type="button"
-                        onClick={openNewOrder}
+                    <Link
+                        href="/customer/create-order"
                         className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70"
                     >
                         <span className="text-base">➕</span>
                         New Order
-                    </button>
+                    </Link>
                     <Link href="/customer/history" className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70">
                         <span className="text-base">🗓️</span>
                         History
+                    </Link>
+                    <Link href="/customer/settings" className="flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[11px] font-bold text-blue-700/70">
+                        <span className="text-base">⚙️</span>
+                        Settings
                     </Link>
                     <button
                         onClick={() => {
