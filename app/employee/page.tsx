@@ -354,7 +354,7 @@ export default function EmployeePage() {
 
                 if (shouldShowRouteToShop && Number.isFinite(shopLat) && Number.isFinite(shopLng)) {
                   const route = await fetchRoadRoute([riderLat, riderLng], [Number(shopLat), Number(shopLng)]);
-                  routePoints = route.points.length >= 2 ? route.points : [[riderLat, riderLng], [Number(shopLat), Number(shopLng)]];
+                  routePoints = route.points;
                 }
 
                 overlays.push({

@@ -555,11 +555,11 @@ export default function RiderDashboard() {
                     if (!target) return null;
 
                     const route = await fetchRoadRoute(origin, target);
-                    const points = route.points.length >= 2 ? route.points : [origin, target];
+                    if (route.points.length < 2) return null;
 
                     return {
                         orderId: task._id,
-                        points,
+                        points: route.points,
                         color: routeColorByStatus(task.status),
                     } as RouteLine;
                 }),

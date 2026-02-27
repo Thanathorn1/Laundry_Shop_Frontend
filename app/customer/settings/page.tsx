@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 
@@ -13,6 +13,7 @@ type CustomerProfile = {
   email?: string;
   phoneNumber?: string;
   address?: string;
+  profileImage?: string;
 };
 
 type SavedAddress = {
@@ -46,6 +47,7 @@ function getRoleFromAccessToken(token: string | null): 'user' | 'rider' | 'admin
 
 export default function CustomerSettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabType>('basic');
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -60,12 +62,21 @@ export default function CustomerSettingsPage() {
   const [formLastName, setFormLastName] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formAddress, setFormAddress] = useState('');
+  const [formProfileImagePreview, setFormProfileImagePreview] = useState<string | null>(null);
+  const [formProfileImageBase64, setFormProfileImageBase64] = useState<string | null>(null);
 
   const [newLabel, setNewLabel] = useState('Home');
   const [newAddress, setNewAddress] = useState('');
   const [newLat, setNewLat] = useState('13.7563');
   const [newLng, setNewLng] = useState('100.5018');
   const [newDefault, setNewDefault] = useState(false);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'basic' || tab === 'addresses' || tab === 'security') {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -90,6 +101,9 @@ export default function CustomerSettingsPage() {
         setFormLastName((safeProfile.lastName || '').trim());
         setFormPhone((safeProfile.phoneNumber || '').trim());
         setFormAddress((safeProfile.address || '').trim());
+        if (safeProfile.profileImage) {
+          setFormProfileImagePreview(safeProfile.profileImage);
+        }
         setSavedAddresses(Array.isArray(addressesData) ? addressesData : []);
 
         if ((safeProfile as any)?.role === 'admin') {
@@ -129,11 +143,13 @@ export default function CustomerSettingsPage() {
           lastName: formLastName.trim(),
           phoneNumber: formPhone.trim(),
           address: formAddress.trim() || undefined,
+          ...(formProfileImageBase64 ? { profileImage: formProfileImageBase64 } : {}),
         }),
       });
 
       setProfile((updated || {}) as CustomerProfile);
       setSuccess('Profile updated successfully');
+      window.dispatchEvent(new Event('profile:updated'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
@@ -288,6 +304,42 @@ export default function CustomerSettingsPage() {
           <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
             {activeTab === 'basic' && (
               <form className="space-y-4" onSubmit={submitProfile}>
+                {/* Profile Image */}
+                <div className="flex items-center gap-5">
+                  <div className="relative h-20 w-20 shrink-0">
+                    {formProfileImagePreview ? (
+                      <img src={formProfileImagePreview} alt="Profile" className="h-20 w-20 rounded-full object-cover border-2 border-blue-100 shadow" />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-600 text-3xl font-black text-white shadow">
+                        {(formFirstName.charAt(0) || 'U').toUpperCase()}
+                      </div>
+                    )}
+                    <label className="absolute bottom-0 right-0 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-white border border-slate-200 shadow hover:bg-blue-50">
+                      <span className="text-sm">📷</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            const result = reader.result as string;
+                            setFormProfileImagePreview(result);
+                            setFormProfileImageBase64(result);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-blue-900">Profile Photo</p>
+                    <p className="text-xs text-blue-700/60 mt-0.5">Click the camera icon to upload a new photo</p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-bold">First Name</label>

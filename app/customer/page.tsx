@@ -755,7 +755,7 @@ export default function CustomerPage() {
             }
 
             const route = await fetchRoadRoute(origin, target);
-            const points = route.points.length >= 2 ? route.points : [origin, target];
+            const points = route.points;
 
             if (cancelled) return;
 
