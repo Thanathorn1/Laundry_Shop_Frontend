@@ -237,6 +237,10 @@ export default function RiderDashboard() {
     const [shopSortMode, setShopSortMode] = useState<'distance' | 'name-asc' | 'name-desc'>('distance');
     const [sendBackSortMode, setSendBackSortMode] = useState<'distance' | 'time'>('distance');
     const [activeSendBackOrderId, setActiveSendBackOrderId] = useState<string | null>(null);
+    const [nearbyOrderSortMode, setNearbyOrderSortMode] = useState<'distance' | 'time' | 'price'>('distance');
+    const [activeNearbyOrderId, setActiveNearbyOrderId] = useState<string | null>(null);
+    const [activeNearbyShopId, setActiveNearbyShopId] = useState<string | null>(null);
+    const [shopRoutePoints, setShopRoutePoints] = useState<[number, number][]>([]);
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
@@ -729,8 +733,21 @@ export default function RiderDashboard() {
             }
 
             const focusedMoveTasks = moveTasks.filter((task) => {
-                if (task.status !== 'out_for_delivery') return true;
-                return Boolean(selectedReturnOrderId) && task._id === selectedReturnOrderId;
+                if (task.status === 'assigned') {
+                    // Only show when Nearby Orders section is open and this is the focused card
+                    if (!openSections.orders) return false;
+                    return Boolean(activeNearbyOrderId) && task._id === activeNearbyOrderId;
+                }
+                if (task.status === 'picked_up' || task.status === 'laundry_done') {
+                    // Only show when Pick Up Laundry At Shop section is open
+                    return openSections.pickupAtShop;
+                }
+                if (task.status === 'out_for_delivery') {
+                    // Only show when Send Back to Customer section is open
+                    if (!openSections.sendBack) return false;
+                    return Boolean(selectedReturnOrderId) && task._id === selectedReturnOrderId;
+                }
+                return false;
             });
 
             if (!focusedMoveTasks.length) {
@@ -769,7 +786,29 @@ export default function RiderDashboard() {
         return () => {
             active = false;
         };
-    }, [myTasks, userLocation, shopsById, handoverShopByOrderId, activeSendBackOrderId, sendBackSortMode]);
+    }, [myTasks, userLocation, shopsById, handoverShopByOrderId, activeSendBackOrderId, sendBackSortMode, openSections, activeNearbyOrderId]);
+
+    // Draw road line from rider to the selected nearby shop
+    useEffect(() => {
+        let active = true;
+        if (!openSections.shops || !activeNearbyShopId || !userLocation) {
+            setShopRoutePoints([]);
+            return;
+        }
+        const shop = shopsById.get(activeNearbyShopId) ||
+            shops.find((s) => s._id === activeNearbyShopId);
+        const coords = shop?.location?.coordinates;
+        if (!Array.isArray(coords) || coords.length < 2) {
+            setShopRoutePoints([]);
+            return;
+        }
+        const target: [number, number] = [coords[1], coords[0]];
+        const origin: [number, number] = [userLocation.lat, userLocation.lon];
+        fetchRoadRoute(origin, target).then((result) => {
+            if (active) setShopRoutePoints(result.points.length >= 2 ? result.points : []);
+        });
+        return () => { active = false; };
+    }, [openSections.shops, activeNearbyShopId, userLocation, shopsById, shops]);
 
     const pickUpLaundryAtShopTasks = useMemo(
         () => (myTasks || []).filter((o) => o?.status === 'laundry_done'),
@@ -780,6 +819,41 @@ export default function RiderDashboard() {
         () => (myTasks || []).filter((o) => o?.status === 'out_for_delivery'),
         [myTasks]
     );
+
+    const sortedFilteredOrders = useMemo(() => {
+        const list = [...filteredOrders];
+
+        const getOrderTime = (order: Order) => {
+            const candidate = order.updatedAt || order.createdAt || '';
+            const parsed = candidate ? new Date(candidate).getTime() : 0;
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        list.sort((a, b) => {
+            if (nearbyOrderSortMode === 'time') {
+                return getOrderTime(b) - getOrderTime(a);
+            }
+            if (nearbyOrderSortMode === 'price') {
+                return (Number(b.totalPrice) || 0) - (Number(a.totalPrice) || 0);
+            }
+            // distance (default)
+            return (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY);
+        });
+
+        return list;
+    }, [filteredOrders, nearbyOrderSortMode, userLocation]);
+
+    // Auto-focus first nearby order when list changes; preserve selection if still in list
+    useEffect(() => {
+        if (!sortedFilteredOrders.length) {
+            setActiveNearbyOrderId(null);
+            return;
+        }
+        setActiveNearbyOrderId((prev) => {
+            if (prev && sortedFilteredOrders.some((o) => o._id === prev)) return prev;
+            return sortedFilteredOrders[0]._id;
+        });
+    }, [sortedFilteredOrders]);
 
     const sortedSendBackToCustomerTasks = useMemo(() => {
         const list = [...sendBackToCustomerTasks];
@@ -1207,10 +1281,18 @@ export default function RiderDashboard() {
                                 {taskRouteLines.map((line) => (
                                     <Polyline
                                         key={`route-${line.orderId}`}
-                                        positions={line.points}  // จุดพิกัดเส้นทาง [lat, lng][]
+                                        positions={line.points}
                                         pathOptions={{ color: line.color, weight: 5, opacity: 0.85 }}
                                     />
                                 ))}
+
+                                {/* Road line to selected nearby shop */}
+                                {shopRoutePoints.length >= 2 && (
+                                    <Polyline
+                                        positions={shopRoutePoints}
+                                        pathOptions={{ color: '#e11d48', weight: 5, opacity: 0.85 }}
+                                    />
+                                )}
 
                                 {userLocation && riderIcon && (
                                     <Marker position={[userLocation.lat, userLocation.lon]} icon={riderIcon}>
@@ -1612,7 +1694,7 @@ export default function RiderDashboard() {
                 )}
 
                 {/* Custom map controls - bottom right */}
-                <div className="absolute bottom-6 right-4 flex flex-col gap-2 z-[400] pointer-events-auto">
+                <div className="absolute bottom-36 right-4 flex flex-col gap-2 z-[400] pointer-events-auto">
                     {/* Locate me */}
                     <button
                         onClick={() => {
@@ -1644,9 +1726,11 @@ export default function RiderDashboard() {
                     {/* Zoom out */}
                     <button
                         onClick={() => mapInstanceRef.current?.zoomOut()}
-                        className="h-11 w-11 rounded-2xl bg-white shadow-xl flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200 text-2xl font-bold leading-none"
+                        className="h-11 w-11 rounded-2xl bg-white shadow-xl flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200"
                         title="Zoom out"
-                    >−</button>
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
+                    </button>
                 </div>
             </div>
 
@@ -1756,6 +1840,21 @@ export default function RiderDashboard() {
                                     </div>
                                 </button>
 
+                                {filteredOrders.length > 1 && (
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Route Focus</span>
+                                        <select
+                                            value={nearbyOrderSortMode}
+                                            onChange={(e) => setNearbyOrderSortMode(e.target.value as 'distance' | 'time' | 'price')}
+                                            className="text-[10px] font-black text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1"
+                                        >
+                                            <option value="distance">Shortest distance</option>
+                                            <option value="time">Latest time</option>
+                                            <option value="price">Highest price</option>
+                                        </select>
+                                    </div>
+                                )}
+
                                 <div className={`overflow-hidden transition-[max-height] duration-300 ${openSections.orders ? 'max-h-[2000px]' : 'max-h-0'}`}>
                                     <div className="space-y-3 pb-2">
                                         {filteredOrders.length === 0 ? (
@@ -1769,11 +1868,12 @@ export default function RiderDashboard() {
                                                 </div>
                                             </div>
                                         ) : (
-                                            filteredOrders.map((order: Order) => (
+                                            sortedFilteredOrders.map((order: Order) => (
                                                 <div
                                                     key={order._id}
-                                                    className="bg-white rounded-3xl p-5 border border-slate-50 shadow-sm hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 group cursor-pointer active:scale-[0.98]"
+                                                    className={`bg-white rounded-3xl p-5 border shadow-sm hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 group cursor-pointer active:scale-[0.98] ${activeNearbyOrderId === order._id ? 'border-blue-200 ring-2 ring-blue-100' : 'border-slate-50'}`}
                                                     onClick={() => {
+                                                        setActiveNearbyOrderId(order._id);
                                                         if (order.location) {
                                                             setMapView({ center: [order.location.lat, order.location.lon], zoom: 16 });
                                                         }
@@ -1907,8 +2007,9 @@ export default function RiderDashboard() {
                                                 return (
                                                     <div
                                                         key={shop._id}
-                                                        className="bg-white rounded-3xl p-5 border border-slate-50 shadow-sm hover:shadow-xl hover:shadow-rose-500/10 transition-all duration-300 cursor-pointer active:scale-[0.98]"
+                                                        className={`bg-white rounded-3xl p-5 border shadow-sm hover:shadow-xl hover:shadow-rose-500/10 transition-all duration-300 cursor-pointer active:scale-[0.98] ${activeNearbyShopId === shop._id ? 'border-rose-200 ring-2 ring-rose-100' : 'border-slate-50'}`}
                                                         onClick={() => {
+                                                            setActiveNearbyShopId(shop._id);
                                                             const coords = shop.location?.coordinates;
                                                             if (Array.isArray(coords) && coords.length >= 2) {
                                                                 setMapView({ center: [coords[1], coords[0]], zoom: 15 });
@@ -2295,27 +2396,6 @@ export default function RiderDashboard() {
                 </div>
             )}
 
-            <style jsx global>{`
-                .custom-scrollbar::-webkit-scrollbar {
-                    width: 4px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                    background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: #e2e8f0;
-                    border-radius: 10px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                    background: #cbd5e1;
-                }
-                .leaflet-container {
-                    background: #f8fafc;
-                }
-                .leaflet-bottom.leaflet-right {
-                    display: none;
-                }
-            `}</style>
         </div>
     );
 }

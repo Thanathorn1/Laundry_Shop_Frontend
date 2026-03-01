@@ -112,6 +112,13 @@ export default function EmployeeShopPage() {
 
   const canManageJoinRequests = isMemberOfShop(me, shopId) || me?.role === 'admin';
 
+  const fetchShopInfo = () => {
+    if (!shopId) return;
+    apiFetch(`/employee/shops/${shopId}/info`)
+      .then((data) => setShopInfo(data as ShopInfo))
+      .catch(() => {});
+  };
+
   const fetchOrders = async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
@@ -136,10 +143,7 @@ export default function EmployeeShopPage() {
   }, [shopId]);
 
   useEffect(() => {
-    if (!shopId) return;
-    apiFetch(`/employee/shops/${shopId}/info`)
-      .then((data) => setShopInfo(data as ShopInfo))
-      .catch(() => setShopInfo(null));
+    fetchShopInfo();
   }, [shopId]);
 
   useEffect(() => {
@@ -160,6 +164,7 @@ export default function EmployeeShopPage() {
       const incomingShopId = order?.shopId ? String(order.shopId) : '';
       if (incomingShopId && incomingShopId === shopId) {
         fetchOrders(true);
+        fetchShopInfo();
       }
     });
 
@@ -169,11 +174,12 @@ export default function EmployeeShopPage() {
     };
   }, [shopId]);
 
-  // Polling fallback: refresh orders every 5 seconds for real-time updates
+  // Polling fallback: refresh orders + machine availability every 5 seconds
   useEffect(() => {
     if (!shopId) return;
     const interval = setInterval(() => {
       fetchOrders(true);
+      fetchShopInfo();
     }, 5000);
     return () => clearInterval(interval);
   }, [shopId]);
@@ -359,7 +365,11 @@ export default function EmployeeShopPage() {
             if (order.status === 'washing') return 'กำลังซัก';
             if (order.status === 'drying') return 'กำลังอบผ้า';
             if (order.status === 'at_shop') return isDryOnlyLaundry ? 'รอเริ่มอบผ้า' : 'รอเริ่มซัก';
-            return isDryOnlyLaundry ? 'เตรียมอบผ้า' : 'เตรียมซัก';
+            if (order.status === 'out_for_delivery') return 'ออกส่งลูกค้าแล้ว';
+            if (order.status === 'completed') return 'เสร็จสิ้น';
+            if (order.status === 'assigned') return 'ไรเดอร์รับงานแล้ว';
+            if (order.status === 'picked_up') return 'ไรเดอร์รับผ้าแล้ว';
+            return isDryOnlyLaundry ? 'เตรียมอบผ้า' : 'รอดำเนินการ';
           })();
           const displayServiceTime = typeof order.serviceTimeMinutes === 'number' ? order.serviceTimeMinutes : 50;
           const unitPrice = isDryOnlyLaundry ? 20 : getWashUnitPrice(order.weightCategory);

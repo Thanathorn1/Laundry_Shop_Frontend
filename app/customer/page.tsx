@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import { io } from 'socket.io-client';
@@ -33,10 +33,21 @@ const Polyline = dynamic(
 const MapController = dynamic(
     () => import('react-leaflet').then((mod) => {
         const { useMap } = mod;
-        return function MapController({ center, zoom }: { center: [number, number], zoom: number }) {
+        return function MapController({ center, zoom, onMapReady }: {
+            center: [number, number];
+            zoom: number;
+            onMapReady?: (map: any) => void;
+        }) {
             const map = useMap();
+            const readyFiredRef = useRef(false);
             useEffect(() => {
-                map.setView(center, zoom);
+                if (!readyFiredRef.current && onMapReady) {
+                    readyFiredRef.current = true;
+                    onMapReady(map);
+                }
+            }, [map, onMapReady]);
+            useEffect(() => {
+                map.flyTo(center, zoom, { duration: 0.6 });
             }, [center, zoom, map]);
             return null;
         };
@@ -233,6 +244,8 @@ export default function CustomerPage() {
     const editMapContainerRef = useRef<HTMLDivElement | null>(null);
     const editMapInstanceRef = useRef<LeafletMap | null>(null);
     const editMarkerRef = useRef<LeafletMarker | null>(null);
+    const trackingMapRef = useRef<any>(null);
+    const trackingCenteredRef = useRef(false);
     const [orders, setOrders] = useState<Order[]>([]);
     const [profile, setProfile] = useState<CustomerProfile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -857,7 +870,10 @@ export default function CustomerPage() {
             if (!origin || !target) {
                 setTrackingRoutePoints([]);
                 setTrackingSummary({ label, distanceKm: null, durationMin: null });
-                if (target) setTrackingMapView({ center: target, zoom: 14 });
+                if (target && !trackingCenteredRef.current) {
+                    trackingCenteredRef.current = true;
+                    setTrackingMapView({ center: target, zoom: 14 });
+                }
                 return;
             }
 
@@ -874,7 +890,11 @@ export default function CustomerPage() {
                 distanceKm: route.distanceKm,
                 durationMin: route.durationMin,
             });
-            setTrackingMapView({ center: target, zoom: 14 }); // เลื่อนแผนที่ไปยังจุดหมาย
+            // Only re-center on initial load per tracked order — not on every rider GPS update
+            if (!trackingCenteredRef.current) {
+                trackingCenteredRef.current = true;
+                setTrackingMapView({ center: target, zoom: 14 });
+            }
         };
 
         computeTrackingRoute();
@@ -886,10 +906,16 @@ export default function CustomerPage() {
 
     // Center map on user's current location if no tracked order is moving the map
     useEffect(() => {
-        if (userLocation && !trackedOrder) {
+        if (userLocation && !trackedOrder && !trackingCenteredRef.current) {
+            trackingCenteredRef.current = true;
             setTrackingMapView({ center: userLocation, zoom: 14 });
         }
     }, [userLocation, trackedOrder]);
+
+    // Reset center guard when tracked order changes so new order gets initial centering
+    useEffect(() => {
+        trackingCenteredRef.current = false;
+    }, [trackedOrder?._id]);
 
     const trackedPickupPoint = trackedOrder ? getPickupPoint(trackedOrder) : null;
     const trackedDeliveryPoint = trackedOrder ? getDeliveryPoint(trackedOrder) : null;
@@ -1343,7 +1369,7 @@ export default function CustomerPage() {
                                 )}
                             </div>
 
-                            <div className="overflow-hidden rounded-3xl border border-slate-100 bg-slate-50">
+                            <div className="overflow-hidden rounded-3xl border border-slate-100 bg-slate-50 relative">
                                 {hasMounted ? (
                                     <MapContainer
                                         center={trackingMapView.center}
@@ -1356,7 +1382,11 @@ export default function CustomerPage() {
                                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                         />
-                                        <MapController center={trackingMapView.center} zoom={trackingMapView.zoom} />
+                                        <MapController
+                                            center={trackingMapView.center}
+                                            zoom={trackingMapView.zoom}
+                                            onMapReady={(map) => { trackingMapRef.current = map; }}
+                                        />
 
                                         {/* วาดเส้นทางถนนติดตามออเดอร์ (Polyline) */}
                                         {/* points มาจาก fetchRoadRoute() -> เส้นถนนจริงจาก OSRM */}
@@ -1374,17 +1404,37 @@ export default function CustomerPage() {
                                             </Marker>
                                         )}
 
-                                        {trackedPickupPoint && customerIcon && (
-                                            <Marker position={trackedPickupPoint} icon={customerIcon}>
-                                                <Popup>Pickup point</Popup>
-                                            </Marker>
-                                        )}
-
-                                        {trackedDeliveryPoint && customerIcon && (
-                                            <Marker position={trackedDeliveryPoint} icon={customerIcon}>
-                                                <Popup>Delivery point</Popup>
-                                            </Marker>
-                                        )}
+                                        {/* All active orders' pickup & delivery points */}
+                                        {customerIcon && activeOrders.map((order) => {
+                                            const isTracked = order._id === trackedOrder?._id;
+                                            const pickup = getPickupPoint(order);
+                                            const delivery = getDeliveryPoint(order);
+                                            const label = order.productName || 'Order';
+                                            const isSamePoint = pickup && delivery &&
+                                                pickup[0] === delivery[0] && pickup[1] === delivery[1];
+                                            return (
+                                                <Fragment key={order._id}>
+                                                    {pickup && (
+                                                        <Marker position={pickup} icon={customerIcon}>
+                                                            <Popup>
+                                                                <strong>{label}</strong><br />
+                                                                Pickup{isTracked ? ' (tracking)' : ''}<br />
+                                                                <span style={{ color: '#666', fontSize: '0.85em' }}>{order.status}</span>
+                                                            </Popup>
+                                                        </Marker>
+                                                    )}
+                                                    {delivery && !isSamePoint && (
+                                                        <Marker position={delivery} icon={customerIcon}>
+                                                            <Popup>
+                                                                <strong>{label}</strong><br />
+                                                                Delivery{isTracked ? ' (tracking)' : ''}<br />
+                                                                <span style={{ color: '#666', fontSize: '0.85em' }}>{order.status}</span>
+                                                            </Popup>
+                                                        </Marker>
+                                                    )}
+                                                </Fragment>
+                                            );
+                                        })}
 
                                         {trackedShopPoint && shopIcon && (
                                             <Marker position={trackedShopPoint} icon={shopIcon}>
@@ -1392,10 +1442,10 @@ export default function CustomerPage() {
                                             </Marker>
                                         )}
 
-                                        {/* Show all shop locations */}
+                                        {/* Show the tracked order's shop only — do not show all shops when an order is being tracked */}
                                         {shopIcon && allShopPoints
                                             .filter((sp) => {
-                                                // Skip if same as trackedShopPoint (already shown above)
+                                                if (trackedOrder) return false; // hide when tracking an order; trackedShopPoint already shown above
                                                 if (!trackedShopPoint) return true;
                                                 return sp.position[0] !== trackedShopPoint[0] || sp.position[1] !== trackedShopPoint[1];
                                             })
@@ -1414,6 +1464,36 @@ export default function CustomerPage() {
                                     </MapContainer>
                                 ) : (
                                     <div className="h-[320px] w-full" />
+                                )}
+                                {/* Custom map controls */}
+                                {hasMounted && (
+                                    <div className="absolute bottom-3 right-3 flex flex-col gap-1.5 z-[400]">
+                                        <button
+                                            onClick={() => {
+                                                if (userLocation) trackingMapRef.current?.flyTo(userLocation, 15, { duration: 0.6 });
+                                            }}
+                                            className="h-9 w-9 rounded-full bg-white shadow-lg flex items-center justify-center text-blue-600 hover:bg-blue-50 active:scale-95 transition-all border border-slate-200"
+                                            title="My location"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+                                                <circle cx="12" cy="12" r="7" strokeWidth={1.5} fill="none" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            onClick={() => trackingMapRef.current?.zoomIn()}
+                                            className="h-9 w-9 rounded-xl bg-white shadow-lg flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200 text-lg font-bold"
+                                            title="Zoom in"
+                                        >+</button>
+                                        <button
+                                            onClick={() => trackingMapRef.current?.zoomOut()}
+                                            className="h-9 w-9 rounded-xl bg-white shadow-lg flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200"
+                                            title="Zoom out"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
+                                        </button>
+                                    </div>
                                 )}
                             </div>
 

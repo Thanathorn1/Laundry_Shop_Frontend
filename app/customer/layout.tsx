@@ -16,18 +16,6 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
       />
 
       <div className="customer-shell px-4 py-6 sm:px-6 lg:px-8">{children}</div>
-
-      <style jsx global>{`
-        .customer-shell > div.flex.min-h-screen > aside,
-        .customer-shell > div.flex.min-h-screen > footer {
-          display: none !important;
-        }
-
-        .customer-shell > div.flex.min-h-screen > main {
-          padding: 0 !important;
-          width: 100%;
-        }
-      `}</style>
     </div>
   );
 }

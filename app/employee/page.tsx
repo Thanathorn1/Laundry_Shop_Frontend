@@ -195,6 +195,7 @@ export default function EmployeePage() {
   const riderMarkersRef = useRef<LeafletCircleMarker[]>([]);
   const riderRouteLinesRef = useRef<LeafletPolyline[]>([]);
   const markerByShopIdRef = useRef<Record<string, LeafletMarker>>({});
+  const shopViewInitializedRef = useRef(false);
 
   const isMemberOfShop = (shopId: string) => {
     if (!me || !shopId) return false;
@@ -345,7 +346,8 @@ export default function EmployeePage() {
     });
 
     const first = shops.find((s) => Array.isArray(s.location?.coordinates) && s.location!.coordinates.length >= 2);
-    if (first?.location?.coordinates) {
+    if (first?.location?.coordinates && !shopViewInitializedRef.current) {
+      shopViewInitializedRef.current = true;
       map.setView([first.location.coordinates[1], first.location.coordinates[0]], 14);
     }
   }, [shops]);

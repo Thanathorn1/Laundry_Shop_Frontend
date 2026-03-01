@@ -240,7 +240,7 @@ export default function RiderMapClient({ orders, shops = [], userLocation, onAcc
             </MapContainer>
 
             {/* Custom map controls - bottom right */}
-            <div className="absolute bottom-6 right-4 flex flex-col gap-2 z-[400] pointer-events-auto">
+            <div className="absolute bottom-36 right-4 flex flex-col gap-2 z-[400] pointer-events-auto">
                 <button
                     onClick={() => {
                         if (userLocation && mapInstanceRef.current) {
@@ -263,9 +263,11 @@ export default function RiderMapClient({ orders, shops = [], userLocation, onAcc
                 >+</button>
                 <button
                     onClick={() => mapInstanceRef.current?.zoomOut()}
-                    className="h-11 w-11 rounded-2xl bg-white shadow-xl flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200 text-2xl font-bold leading-none"
+                    className="h-11 w-11 rounded-2xl bg-white shadow-xl flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200"
                     title="Zoom out"
-                >−</button>
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
+                </button>
             </div>
         </div>
     );
