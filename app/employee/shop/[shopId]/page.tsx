@@ -43,6 +43,22 @@ type MyEmployeeProfile = {
   assignedShopIds?: string[];
 };
 
+type ShopInfo = {
+  _id: string;
+  shopName?: string;
+  totalWashingMachines?: number;
+  totalDryingMachines?: number;
+  machineSizeConfig?: { s?: number; m?: number; l?: number };
+  machineAvailable?: number;
+  dryMachineAvailable?: number;
+  machineAvailableS?: number;
+  machineAvailableM?: number;
+  machineAvailableL?: number;
+  machineTotalS?: number;
+  machineTotalM?: number;
+  machineTotalL?: number;
+};
+
 type JoinRequestEmployee = {
   _id: string;
   email: string;
@@ -80,6 +96,7 @@ export default function EmployeeShopPage() {
   const shopId = String(params?.shopId || '');
   const [orders, setOrders] = useState<ShopOrder[]>([]);
   const [me, setMe] = useState<MyEmployeeProfile | null>(null);
+  const [shopInfo, setShopInfo] = useState<ShopInfo | null>(null);
   const [joinRequests, setJoinRequests] = useState<JoinRequestEmployee[]>([]);
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinActionId, setJoinActionId] = useState<string | null>(null);
@@ -116,6 +133,13 @@ export default function EmployeeShopPage() {
 
   useEffect(() => {
     fetchOrders();
+  }, [shopId]);
+
+  useEffect(() => {
+    if (!shopId) return;
+    apiFetch(`/employee/shops/${shopId}/info`)
+      .then((data) => setShopInfo(data as ShopInfo))
+      .catch(() => setShopInfo(null));
   }, [shopId]);
 
   useEffect(() => {
@@ -236,6 +260,43 @@ export default function EmployeeShopPage() {
         <h1 className="text-3xl font-black text-blue-900 tracking-tight">Shop Orders</h1>
         <p className="text-blue-700/60 text-sm font-medium">Update laundry steps for each order in this shop.</p>
       </div>
+
+      {/* Machine availability panel */}
+      {shopInfo && (
+        <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Machine Availability</h2>
+          <div className="flex flex-wrap gap-3">
+            {/* Wash per size */}
+            {([
+              { label: 'S (0–4 kg)', avail: shopInfo.machineAvailableS ?? 0, total: shopInfo.machineTotalS ?? Number(shopInfo.machineSizeConfig?.s) ?? 0 },
+              { label: 'M (6–10 kg)', avail: shopInfo.machineAvailableM ?? 0, total: shopInfo.machineTotalM ?? Number(shopInfo.machineSizeConfig?.m) ?? 0 },
+              { label: 'L (10–20 kg)', avail: shopInfo.machineAvailableL ?? 0, total: shopInfo.machineTotalL ?? Number(shopInfo.machineSizeConfig?.l) ?? 0 },
+            ] as { label: string; avail: number; total: number }[]).map(({ label, avail, total }) => {
+              const isFull = avail === 0;
+              return (
+                <div key={label} className={`flex flex-col items-center rounded-2xl border px-4 py-3 min-w-[90px] ${isFull ? 'border-rose-200 bg-rose-50' : 'border-sky-100 bg-sky-50'}`}>
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${isFull ? 'text-rose-500' : 'text-sky-500'}`}>Wash {label}</span>
+                  <span className={`text-xl font-black mt-1 ${isFull ? 'text-rose-700' : 'text-sky-700'}`}>{avail}<span className="text-sm font-bold text-slate-400">/{total}</span></span>
+                  <span className="text-[9px] text-slate-400 mt-0.5 font-semibold">empty slots</span>
+                </div>
+              );
+            })}
+            {/* Dry machines */}
+            {(() => {
+              const dryAvail = shopInfo.dryMachineAvailable ?? 0;
+              const dryTotal = shopInfo.totalDryingMachines ?? 0;
+              const isFull = dryAvail === 0;
+              return (
+                <div className={`flex flex-col items-center rounded-2xl border px-4 py-3 min-w-[90px] ${isFull ? 'border-rose-200 bg-rose-50' : 'border-emerald-100 bg-emerald-50'}`}>
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${isFull ? 'text-rose-500' : 'text-emerald-600'}`}>Dry Machines</span>
+                  <span className={`text-xl font-black mt-1 ${isFull ? 'text-rose-700' : 'text-emerald-700'}`}>{dryAvail}<span className="text-sm font-bold text-slate-400">/{dryTotal}</span></span>
+                  <span className="text-[9px] text-slate-400 mt-0.5 font-semibold">empty slots</span>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {loading && <p className="text-sm text-blue-700/70">Loading orders...</p>}
       {error && <p className="text-sm text-rose-600">Error: {error}</p>}

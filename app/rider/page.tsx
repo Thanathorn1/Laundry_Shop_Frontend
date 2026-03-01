@@ -99,6 +99,12 @@ type Shop = {
     machineAvailable?: number;
     dryMachineInUse?: number;
     dryMachineAvailable?: number;
+    machineInUseS?: number;
+    machineInUseM?: number;
+    machineInUseL?: number;
+    machineAvailableS?: number;
+    machineAvailableM?: number;
+    machineAvailableL?: number;
     location?: { coordinates: number[] };
 };
 
@@ -1202,11 +1208,12 @@ export default function RiderDashboard() {
                             const coords = shop.location?.coordinates;
                             if (!Array.isArray(coords) || coords.length < 2 || !shopIcon) return null;
                             const name = shop.shopName || shop.label || 'Shop';
-                                const machineS = Number(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10) || 0;
-                                const machineM = Number(shop.machineSizeConfig?.m ?? 0) || 0;
-                                const machineL = Number(shop.machineSizeConfig?.l ?? 0) || 0;
-                                const washTotal = Number(shop.totalWashingMachines ?? (machineS + machineM + machineL)) || 10;
-                                const washAvailable = Number(shop.machineAvailable ?? Math.max(0, washTotal - Number(shop.machineInUse || 0))) || 0;
+                                const machineSTotal = Number(shop.machineSizeConfig?.s ?? 0) || 0;
+                                const machineMTotal = Number(shop.machineSizeConfig?.m ?? 0) || 0;
+                                const machineLTotal = Number(shop.machineSizeConfig?.l ?? 0) || 0;
+                                const machineAvailS = Number(shop.machineAvailableS ?? Math.max(0, machineSTotal - Number(shop.machineInUseS ?? 0))) || 0;
+                                const machineAvailM = Number(shop.machineAvailableM ?? Math.max(0, machineMTotal - Number(shop.machineInUseM ?? 0))) || 0;
+                                const machineAvailL = Number(shop.machineAvailableL ?? Math.max(0, machineLTotal - Number(shop.machineInUseL ?? 0))) || 0;
                                 const dryTotal = Number(shop.totalDryingMachines ?? shop.totalWashingMachines ?? 10) || 10;
                                 const dryAvailable = Number(shop.dryMachineAvailable ?? Math.max(0, dryTotal - Number(shop.dryMachineInUse || 0))) || 0;
                                 const readyTasksAtShop = pickUpLaundryAtShopTasks.filter((task) => String(task.shopId || '') === String(shop._id));
@@ -1240,9 +1247,8 @@ export default function RiderDashboard() {
                                                 {shop.phoneNumber ? (
                                                     <span className="text-[10px] font-black text-slate-600 bg-slate-50 px-2 py-1 rounded">☎ {shop.phoneNumber}</span>
                                                 ) : null}
-                                                <span className="text-[10px] font-black text-rose-700 bg-rose-50 px-2 py-1 rounded">S/M/L {machineS}/{machineM}/{machineL}</span>
                                                 <span className="text-[10px] font-black text-sky-700 bg-sky-50 px-2 py-1 rounded">
-                                                    Wash Empty {washAvailable}/{washTotal}
+                                                    S {machineAvailS}/{machineSTotal} · M {machineAvailM}/{machineMTotal} · L {machineAvailL}/{machineLTotal}
                                                 </span>
                                                 <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
                                                     Dry Empty {dryAvailable}/{dryTotal}
@@ -1831,11 +1837,12 @@ export default function RiderDashboard() {
                                         ) : (
                                             nearbyShops.map(({ shop, distance }) => {
                                                 const name = shop.shopName || shop.label || 'Shop';
-                                                const machineS = Number(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10) || 0;
-                                                const machineM = Number(shop.machineSizeConfig?.m ?? 0) || 0;
-                                                const machineL = Number(shop.machineSizeConfig?.l ?? 0) || 0;
-                                                const washTotal = Number(shop.totalWashingMachines ?? (machineS + machineM + machineL)) || 10;
-                                                const washAvailable = Number(shop.machineAvailable ?? Math.max(0, washTotal - Number(shop.machineInUse || 0))) || 0;
+                                                const machineSTotal = Number(shop.machineSizeConfig?.s ?? 0) || 0;
+                                                const machineMTotal = Number(shop.machineSizeConfig?.m ?? 0) || 0;
+                                                const machineLTotal = Number(shop.machineSizeConfig?.l ?? 0) || 0;
+                                                const machineAvailS = Number(shop.machineAvailableS ?? Math.max(0, machineSTotal - Number(shop.machineInUseS ?? 0))) || 0;
+                                                const machineAvailM = Number(shop.machineAvailableM ?? Math.max(0, machineMTotal - Number(shop.machineInUseM ?? 0))) || 0;
+                                                const machineAvailL = Number(shop.machineAvailableL ?? Math.max(0, machineLTotal - Number(shop.machineInUseL ?? 0))) || 0;
                                                 const dryTotal = Number(shop.totalDryingMachines ?? shop.totalWashingMachines ?? 10) || 10;
                                                 const dryAvailable = Number(shop.dryMachineAvailable ?? Math.max(0, dryTotal - Number(shop.dryMachineInUse || 0))) || 0;
                                                 const shopTasks = myTasksByShopId.get(shop._id);
@@ -1865,11 +1872,8 @@ export default function RiderDashboard() {
                                                                     <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 uppercase tracking-tighter">
                                                                         {totalLaundry} laundry
                                                                     </span>
-                                                                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 uppercase tracking-tighter">
-                                                                        S/M/L {machineS}/{machineM}/{machineL}
-                                                                    </span>
                                                                     <span className="text-[9px] font-black text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100 uppercase tracking-tighter">
-                                                                        Wash empty {washAvailable}/{washTotal}
+                                                                        S {machineAvailS}/{machineSTotal} · M {machineAvailM}/{machineMTotal} · L {machineAvailL}/{machineLTotal}
                                                                     </span>
                                                                     <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 uppercase tracking-tighter">
                                                                         Dry empty {dryAvailable}/{dryTotal}
