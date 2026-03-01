@@ -2374,9 +2374,10 @@ export default function RiderDashboard() {
                                                     className={`bg-white rounded-3xl p-5 border shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 cursor-pointer active:scale-[0.98] ${activeSendBackOrderId === order._id ? 'border-emerald-200 ring-2 ring-emerald-100' : 'border-slate-50'}`}
                                                     onClick={() => {
                                                         setActiveSendBackOrderId(order._id);
-                                                        const target = getDeliveryTarget(order);
-                                                        if (target) {
-                                                            setMapView({ center: target, zoom: 16 });
+                                                        const lat = order.deliveryLocation?.coordinates?.[1] ?? order.location?.lat;
+                                                        const lon = order.deliveryLocation?.coordinates?.[0] ?? order.location?.lon;
+                                                        if (typeof lat === 'number' && typeof lon === 'number') {
+                                                            setMapView({ center: [lat, lon], zoom: 16 });
                                                         }
                                                     }}
                                                 >

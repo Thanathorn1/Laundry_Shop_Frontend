@@ -251,7 +251,7 @@ export default function EmployeeShopListPage() {
         shopName: shopName.trim(),
         label: shopName.trim(),
         phoneNumber: phoneNumber.trim(),
-        totalWashingMachines: Number(totalMachines) || 10,
+        totalWashingMachines: (Number(machineS) || 0) + (Number(machineM) || 0) + (Number(machineL) || 0),
         totalDryingMachines: Number(totalDryingMachines) || 8,
         machineSizeConfig: {
           s: Number(machineS) || 0,
@@ -404,7 +404,7 @@ export default function EmployeeShopListPage() {
           <div className="grid gap-3 sm:grid-cols-5">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Washing Machines</label>
-              <input type="number" value={totalMachines} onChange={(e) => setTotalMachines(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300" />
+              <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 font-semibold">{(Number(machineS) || 0) + (Number(machineM) || 0) + (Number(machineL) || 0)}</div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Drying Machines</label>
