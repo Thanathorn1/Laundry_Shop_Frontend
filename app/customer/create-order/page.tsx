@@ -9,15 +9,15 @@ import { calculateOrderPriceSummary, getWashUnitPrice } from "@/lib/pricing";
 
 type CreateOrderPayload = {
   productName: string;
-  description?: string;
+  description: string;
   images?: string[];
-  contactPhone?: string;
+  contactPhone: string;
   laundryType?: 'wash' | 'dry';
   weightCategory?: 's' | 'm' | 'l';
   serviceTimeMinutes?: number;
   pickupLatitude: number;
   pickupLongitude: number;
-  pickupAddress?: string;
+  pickupAddress: string;
   pickupType: 'now' | 'schedule';
   pickupAt?: string;
 };
@@ -219,14 +219,17 @@ export default function CreateOrderPage() {
       Boolean(
         (!mustCompleteProfile || (firstName.trim() && lastName.trim())) &&
         productName.trim() &&
+          description.trim() &&
+          basketPhotos.length > 0 &&
           contactPhone.trim() &&
+          pickupAddress.trim() &&
           pickupLatitude.trim() &&
           pickupLongitude.trim() &&
           !Number.isNaN(Number(pickupLatitude)) &&
           !Number.isNaN(Number(pickupLongitude)) &&
           (pickupType === 'now' || (pickupDate.trim() && pickupTime.trim())),
       ),
-    [mustCompleteProfile, firstName, lastName, productName, contactPhone, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
+    [mustCompleteProfile, firstName, lastName, productName, description, basketPhotos.length, contactPhone, pickupAddress, pickupLatitude, pickupLongitude, pickupType, pickupDate, pickupTime],
   );
 
   const estimatedPrice = useMemo(
@@ -438,6 +441,28 @@ export default function CreateOrderPage() {
 
     const pickupLat = Number(pickupLatitude);
     const pickupLng = Number(pickupLongitude);
+
+    if (!productName.trim()) {
+      setError("Please enter product name");
+      return;
+    }
+    if (!description.trim()) {
+      setError("Please enter description");
+      return;
+    }
+    if (!contactPhone.trim()) {
+      setError("Please enter contact phone");
+      return;
+    }
+    if (!pickupAddress.trim()) {
+      setError("Please enter pickup address");
+      return;
+    }
+    if (basketPhotos.length === 0) {
+      setError("Please upload at least 1 basket photo");
+      return;
+    }
+
     if (Number.isNaN(pickupLat) || Number.isNaN(pickupLng)) {
       setError("Pickup latitude/longitude must be numbers");
       return;
@@ -464,15 +489,15 @@ export default function CreateOrderPage() {
 
     const payload: CreateOrderPayload = {
       productName: productName.trim(),
-      description: description.trim() || undefined,
+      description: description.trim(),
       images: basketPhotos.length ? await filesToBase64(basketPhotos) : undefined,
-      contactPhone: contactPhone.trim() || undefined,
+      contactPhone: contactPhone.trim(),
       laundryType,
       weightCategory,
       serviceTimeMinutes,
       pickupLatitude: pickupLat,
       pickupLongitude: pickupLng,
-      pickupAddress: pickupAddress.trim() || undefined,
+      pickupAddress: pickupAddress.trim(),
       pickupType,
       pickupAt,
     };
@@ -801,6 +826,7 @@ export default function CreateOrderPage() {
               type="file"
               accept="image/*"
               multiple
+              required
               onChange={(event) => setBasketPhotos(Array.from(event.target.files ?? []))}
               className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
             />
@@ -825,10 +851,11 @@ export default function CreateOrderPage() {
           <div>
             <label className="mb-1 block text-sm font-bold">Description</label>
             <textarea
+              required
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
-              placeholder="Optional details"
+              placeholder="Enter order details"
               rows={3}
             />
           </div>
@@ -868,6 +895,7 @@ export default function CreateOrderPage() {
           <div>
             <label className="mb-1 block text-sm font-bold">Pickup Address</label>
             <input
+              required
               value={pickupAddress}
               onChange={(event) => setPickupAddress(event.target.value)}
               className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"

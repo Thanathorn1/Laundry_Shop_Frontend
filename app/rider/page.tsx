@@ -66,6 +66,8 @@ interface Order {
         lon: number;
     };
     distance?: number;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 type LaundryStatus =
@@ -87,6 +89,7 @@ type Shop = {
     phoneNumber?: string;
     photoImage?: string;
     totalWashingMachines?: number;
+    totalDryingMachines?: number;
     machineSizeConfig?: {
         s?: number;
         m?: number;
@@ -94,6 +97,8 @@ type Shop = {
     };
     machineInUse?: number;
     machineAvailable?: number;
+    dryMachineInUse?: number;
+    dryMachineAvailable?: number;
     location?: { coordinates: number[] };
 };
 
@@ -165,6 +170,8 @@ export default function RiderDashboard() {
     const [handoverShopByOrderId, setHandoverShopByOrderId] = useState<Record<string, string>>({});
     const [handoverReadyByOrderId, setHandoverReadyByOrderId] = useState<Record<string, boolean>>({});
     const [sendingAllByShopId, setSendingAllByShopId] = useState<Record<string, boolean>>({});
+    const [pickingUpAllByShopId, setPickingUpAllByShopId] = useState<Record<string, boolean>>({});
+    const [pickingUpAllLaundry, setPickingUpAllLaundry] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [authBlocked, setAuthBlocked] = useState(false);
@@ -203,10 +210,14 @@ export default function RiderDashboard() {
     const [shopsAlert, setShopsAlert] = useState(false);
     const [pickupAtShopAlert, setPickupAtShopAlert] = useState(false);
     const [sendBackAlert, setSendBackAlert] = useState(false);
+    const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
+    const [zoomedImageAlt, setZoomedImageAlt] = useState<string>('Order image');
 
     // Shop search & sort state
     const [shopSearch, setShopSearch] = useState('');
     const [shopSortMode, setShopSortMode] = useState<'distance' | 'name-asc' | 'name-desc'>('distance');
+    const [sendBackSortMode, setSendBackSortMode] = useState<'distance' | 'time'>('distance');
+    const [activeSendBackOrderId, setActiveSendBackOrderId] = useState<string | null>(null);
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
@@ -219,6 +230,17 @@ export default function RiderDashboard() {
         if (value.startsWith('http')) return value;
         if (value.startsWith('data:') || value.startsWith('blob:')) return value;
         return `${ASSET_BASE_URL}${value.startsWith('/') ? value : `/${value}`}`;
+    };
+
+    const openImageZoom = (imageUrl: string | undefined | null, alt?: string) => {
+        const resolved = resolveAssetUrl(imageUrl);
+        if (!resolved) return;
+        setZoomedImageUrl(resolved);
+        setZoomedImageAlt(alt || 'Order image');
+    };
+
+    const closeImageZoom = () => {
+        setZoomedImageUrl(null);
     };
 
     const [leaflet, setLeaflet] = useState<typeof import('leaflet') | null>(null);
@@ -653,7 +675,45 @@ export default function RiderDashboard() {
                 ['assigned', 'picked_up', 'laundry_done', 'out_for_delivery'].includes(task.status),
             );
 
-            if (!moveTasks.length) {
+            const outForDeliveryTasks = moveTasks.filter((task) => task.status === 'out_for_delivery');
+            const getOrderTime = (order: Order) => {
+                const candidate = order.updatedAt || order.createdAt || '';
+                const parsed = candidate ? new Date(candidate).getTime() : 0;
+                return Number.isFinite(parsed) ? parsed : 0;
+            };
+
+            let selectedReturnOrderId = activeSendBackOrderId;
+            if (!selectedReturnOrderId && outForDeliveryTasks.length > 0) {
+                const sorted = [...outForDeliveryTasks].sort((a, b) => {
+                    if (sendBackSortMode === 'time') {
+                        return getOrderTime(b) - getOrderTime(a);
+                    }
+
+                    const aTarget = getDeliveryTarget(a);
+                    const bTarget = getDeliveryTarget(b);
+                    const aDistance = aTarget
+                        ? calculateDistance(userLocation.lat, userLocation.lon, aTarget[0], aTarget[1])
+                        : Number.POSITIVE_INFINITY;
+                    const bDistance = bTarget
+                        ? calculateDistance(userLocation.lat, userLocation.lon, bTarget[0], bTarget[1])
+                        : Number.POSITIVE_INFINITY;
+
+                    if (aDistance === bDistance) {
+                        return getOrderTime(b) - getOrderTime(a);
+                    }
+
+                    return aDistance - bDistance;
+                });
+
+                selectedReturnOrderId = sorted[0]?._id ?? null;
+            }
+
+            const focusedMoveTasks = moveTasks.filter((task) => {
+                if (task.status !== 'out_for_delivery') return true;
+                return Boolean(selectedReturnOrderId) && task._id === selectedReturnOrderId;
+            });
+
+            if (!focusedMoveTasks.length) {
                 setTaskRouteLines([]);
                 return;
             }
@@ -663,7 +723,7 @@ export default function RiderDashboard() {
 
             // วนลูปคำนวณเส้นทางแต่ละงาน (ทำพร้อมกันด้วย Promise.all)
             const lines = await Promise.all(
-                moveTasks.map(async (task) => {
+                focusedMoveTasks.map(async (task) => {
                     const target = getRouteTargetForTask(task); // หาจุดหมายตามสถานะ
                     if (!target) return null;
 
@@ -689,7 +749,7 @@ export default function RiderDashboard() {
         return () => {
             active = false;
         };
-    }, [myTasks, userLocation, shopsById, handoverShopByOrderId]);
+    }, [myTasks, userLocation, shopsById, handoverShopByOrderId, activeSendBackOrderId, sendBackSortMode]);
 
     const pickUpLaundryAtShopTasks = useMemo(
         () => (myTasks || []).filter((o) => o?.status === 'laundry_done'),
@@ -700,6 +760,53 @@ export default function RiderDashboard() {
         () => (myTasks || []).filter((o) => o?.status === 'out_for_delivery'),
         [myTasks]
     );
+
+    const sortedSendBackToCustomerTasks = useMemo(() => {
+        const list = [...sendBackToCustomerTasks];
+
+        const getOrderTime = (order: Order) => {
+            const candidate = order.updatedAt || order.createdAt || '';
+            const parsed = candidate ? new Date(candidate).getTime() : 0;
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        list.sort((a, b) => {
+            if (sendBackSortMode === 'time') {
+                return getOrderTime(b) - getOrderTime(a);
+            }
+
+            const aTarget = getDeliveryTarget(a);
+            const bTarget = getDeliveryTarget(b);
+            const aDistance = (userLocation && aTarget)
+                ? calculateDistance(userLocation.lat, userLocation.lon, aTarget[0], aTarget[1])
+                : Number.POSITIVE_INFINITY;
+            const bDistance = (userLocation && bTarget)
+                ? calculateDistance(userLocation.lat, userLocation.lon, bTarget[0], bTarget[1])
+                : Number.POSITIVE_INFINITY;
+
+            if (aDistance === bDistance) {
+                return getOrderTime(b) - getOrderTime(a);
+            }
+
+            return aDistance - bDistance;
+        });
+
+        return list;
+    }, [sendBackToCustomerTasks, sendBackSortMode, userLocation]);
+
+    useEffect(() => {
+        if (!sortedSendBackToCustomerTasks.length) {
+            setActiveSendBackOrderId(null);
+            return;
+        }
+
+        setActiveSendBackOrderId((prev) => {
+            if (prev && sortedSendBackToCustomerTasks.some((order) => order._id === prev)) {
+                return prev;
+            }
+            return sortedSendBackToCustomerTasks[0]._id;
+        });
+    }, [sortedSendBackToCustomerTasks]);
 
     const pickedUpOrders = useMemo(
         () => (myTasks || []).filter((o) => o?.status === 'picked_up'),
@@ -951,6 +1058,58 @@ export default function RiderDashboard() {
         }
     };
 
+    const pickUpAllLaundryFromShop = async (orders: Order[]) => {
+        if (!orders.length) return;
+
+        setPickingUpAllLaundry(true);
+        try {
+            const pickupResults = await Promise.allSettled(
+                orders.map((order) => apiFetch(`/rider/return-delivery/${order._id}`, { method: 'PATCH' })),
+            );
+
+            const pickedCount = pickupResults.filter((result) => result.status === 'fulfilled').length;
+            const failedCount = pickupResults.length - pickedCount;
+
+            if (failedCount > 0) {
+                alert(`Picked up ${pickedCount}/${pickupResults.length} orders (${failedCount} failed)`);
+            }
+
+            if (pickedCount > 0) {
+                await fetchData();
+            }
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : String(err));
+        } finally {
+            setPickingUpAllLaundry(false);
+        }
+    };
+
+    const pickUpAllLaundryByShop = async (shopId: string, orders: Order[]) => {
+        if (!orders.length) return;
+
+        setPickingUpAllByShopId((prev) => ({ ...prev, [shopId]: true }));
+        try {
+            const pickupResults = await Promise.allSettled(
+                orders.map((order) => apiFetch(`/rider/return-delivery/${order._id}`, { method: 'PATCH' })),
+            );
+
+            const pickedCount = pickupResults.filter((result) => result.status === 'fulfilled').length;
+            const failedCount = pickupResults.length - pickedCount;
+
+            if (failedCount > 0) {
+                alert(`Picked up ${pickedCount}/${pickupResults.length} orders (${failedCount} failed)`);
+            }
+
+            if (pickedCount > 0) {
+                await fetchData();
+            }
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : String(err));
+        } finally {
+            setPickingUpAllByShopId((prev) => ({ ...prev, [shopId]: false }));
+        }
+    };
+
     const completeDelivery = async (orderId: string) => {
         try {
             await apiFetch(`/rider/complete-delivery/${orderId}`, { method: 'PATCH' });
@@ -1046,6 +1205,8 @@ export default function RiderDashboard() {
                                 const machineS = Number(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10) || 0;
                                 const machineM = Number(shop.machineSizeConfig?.m ?? 0) || 0;
                                 const machineL = Number(shop.machineSizeConfig?.l ?? 0) || 0;
+                                const dryTotal = Number(shop.totalDryingMachines ?? shop.totalWashingMachines ?? 10) || 10;
+                                const dryAvailable = Number(shop.dryMachineAvailable ?? Math.max(0, dryTotal - Number(shop.dryMachineInUse || 0))) || 0;
                                 const readyTasksAtShop = pickUpLaundryAtShopTasks.filter((task) => String(task.shopId || '') === String(shop._id));
                             const distKm =
                                 userLocation && typeof coords[1] === 'number' && typeof coords[0] === 'number'
@@ -1078,6 +1239,9 @@ export default function RiderDashboard() {
                                                     <span className="text-[10px] font-black text-slate-600 bg-slate-50 px-2 py-1 rounded">☎ {shop.phoneNumber}</span>
                                                 ) : null}
                                                 <span className="text-[10px] font-black text-rose-700 bg-rose-50 px-2 py-1 rounded">S/M/L {machineS}/{machineM}/{machineL}</span>
+                                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+                                                    Dry Empty {dryAvailable}/{dryTotal}
+                                                </span>
                                             </div>
 
                                             {/* Send picked-up orders to this shop */}
@@ -1141,15 +1305,54 @@ export default function RiderDashboard() {
 
                                             {readyTasksAtShop.length > 0 && (
                                                 <div className="mt-3 space-y-2 border-t border-slate-100 pt-2">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Pickup at shop</p>
-                                                    {readyTasksAtShop.slice(0, 2).map((task) => (
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Pickup at shop</p>
                                                         <button
-                                                            key={`pickup-at-shop-pin-${task._id}`}
-                                                            onClick={() => pickUpLaundryFromShop(task._id)}
-                                                            className="w-full rounded-lg bg-blue-600 py-1.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-blue-700"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                pickUpAllLaundryByShop(shop._id, readyTasksAtShop);
+                                                            }}
+                                                            disabled={!!pickingUpAllByShopId[shop._id]}
+                                                            className="text-[9px] font-black text-white bg-blue-600 px-2 py-1 rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
                                                         >
-                                                            Pick Up {task.customerName || task.productName || 'Order'}
+                                                            {pickingUpAllByShopId[shop._id] ? 'Picking...' : `Pick Up All (${readyTasksAtShop.length})`}
                                                         </button>
+                                                    </div>
+                                                    {readyTasksAtShop.slice(0, 3).map((task) => (
+                                                        <div
+                                                            key={`pickup-at-shop-pin-${task._id}`}
+                                                            className="flex items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 p-2"
+                                                        >
+                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                {Array.isArray(task.images) && task.images.length > 0 ? (
+                                                                    <img
+                                                                        src={resolveAssetUrl(task.images[0])}
+                                                                        alt={task.productName || task.customerName || 'Order image'}
+                                                                        className="h-9 w-9 rounded-md object-cover border border-blue-100 cursor-zoom-in"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            openImageZoom(task.images?.[0], task.productName || task.customerName || 'Order image');
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    <div className="h-9 w-9 rounded-md bg-blue-100 border border-blue-200 flex items-center justify-center text-[10px] font-black text-blue-700">
+                                                                        IMG
+                                                                    </div>
+                                                                )}
+                                                                <p className="text-[10px] font-bold text-slate-700 line-clamp-1">
+                                                                    {task.customerName || task.productName || 'Order'}
+                                                                </p>
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    pickUpLaundryFromShop(task._id);
+                                                                }}
+                                                                className="rounded-md bg-blue-600 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-white hover:bg-blue-700 whitespace-nowrap"
+                                                            >
+                                                                Pick Up
+                                                            </button>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             )}
@@ -1159,7 +1362,7 @@ export default function RiderDashboard() {
                             );
                             })}
 
-                            {sendBackToCustomerTasks.map((order) => {
+                            {sortedSendBackToCustomerTasks.map((order) => {
                             const lat = order.deliveryLocation?.coordinates?.[1] ?? order.pickupLocation?.coordinates?.[1];
                             const lon = order.deliveryLocation?.coordinates?.[0] ?? order.pickupLocation?.coordinates?.[0];
                             if (typeof lat !== 'number' || typeof lon !== 'number') return null;
@@ -1168,8 +1371,13 @@ export default function RiderDashboard() {
                                 <CircleMarker
                                     key={`return-customer-${order._id}`}
                                     center={[lat, lon]}
-                                    radius={8}
+                                    radius={activeSendBackOrderId === order._id ? 10 : 8}
                                     pathOptions={{ color: '#059669', fillColor: '#10b981', fillOpacity: 0.9, weight: 2 }}
+                                    eventHandlers={{
+                                        click: () => {
+                                            setActiveSendBackOrderId(order._id);
+                                        },
+                                    }}
                                 >
                                     <Popup>
                                         <div className="p-3 w-56">
@@ -1184,7 +1392,11 @@ export default function RiderDashboard() {
                                                             key={`${order._id}-destination-img-${index}`}
                                                             src={resolveAssetUrl(image)}
                                                             alt={`Laundry image ${index + 1}`}
-                                                            className="h-16 w-full rounded-lg object-cover border border-slate-100"
+                                                            className="h-16 w-full rounded-lg object-cover border border-slate-100 cursor-zoom-in"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openImageZoom(image, `Laundry image ${index + 1}`);
+                                                            }}
                                                         />
                                                     ))}
                                                 </div>
@@ -1223,7 +1435,11 @@ export default function RiderDashboard() {
                                                 <img
                                                     src={resolveAssetUrl(order.images[0])}
                                                     alt="Order"
-                                                    className="mb-2 h-24 w-full rounded-xl object-cover border border-slate-100"
+                                                    className="mb-2 h-24 w-full rounded-xl object-cover border border-slate-100 cursor-zoom-in"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openImageZoom(order.images?.[0], order.productName || order.customerName || 'Order image');
+                                                    }}
                                                 />
                                             ) : null}
 
@@ -1298,7 +1514,7 @@ export default function RiderDashboard() {
                                                                 value={s._id}
                                                                 disabled={order.pickupType === 'now' && (Number(s.machineAvailable) || 0) <= 0}
                                                             >
-                                                                {`${(s.shopName || s.label || 'Shop').toUpperCase()} (${Number(s.machineAvailable) || 0}/${Number(s.totalWashingMachines) || 10})`}
+                                                                {`${(s.shopName || s.label || 'Shop').toUpperCase()} (W ${Number(s.machineAvailable) || 0}/${Number(s.totalWashingMachines) || 10} | D ${Number(s.dryMachineAvailable) || 0}/${Number(s.totalDryingMachines) || Number(s.totalWashingMachines) || 10})`}
                                                             </option>
                                                         ))}
                                                     </select>
@@ -1613,6 +1829,8 @@ export default function RiderDashboard() {
                                                 const machineS = Number(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10) || 0;
                                                 const machineM = Number(shop.machineSizeConfig?.m ?? 0) || 0;
                                                 const machineL = Number(shop.machineSizeConfig?.l ?? 0) || 0;
+                                                const dryTotal = Number(shop.totalDryingMachines ?? shop.totalWashingMachines ?? 10) || 10;
+                                                const dryAvailable = Number(shop.dryMachineAvailable ?? Math.max(0, dryTotal - Number(shop.dryMachineInUse || 0))) || 0;
                                                 const shopTasks = myTasksByShopId.get(shop._id);
                                                 const counts = shopTasks?.counts;
                                                 const totalLaundry = shopTasks?.orders.length || 0;
@@ -1642,6 +1860,9 @@ export default function RiderDashboard() {
                                                                     </span>
                                                                     <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 uppercase tracking-tighter">
                                                                         S/M/L {machineS}/{machineM}/{machineL}
+                                                                    </span>
+                                                                    <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 uppercase tracking-tighter">
+                                                                        Dry empty {dryAvailable}/{dryTotal}
                                                                     </span>
                                                                 </div>
                                                             </div>
@@ -1744,11 +1965,19 @@ export default function RiderDashboard() {
 
                             {/* Pick Up Laundry At Shop */}
                             <div className="px-1 pt-1 pb-2">
-                                <button
-                                    type="button"
+                                <div
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={() => {
                                         if (!openSections.pickupAtShop) setPickupAtShopAlert(false);
                                         toggleSection('pickupAtShop');
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            if (!openSections.pickupAtShop) setPickupAtShopAlert(false);
+                                            toggleSection('pickupAtShop');
+                                        }
                                     }}
                                     className="w-full flex items-center justify-between mb-2"
                                 >
@@ -1764,9 +1993,22 @@ export default function RiderDashboard() {
                                         <span className="bg-blue-50 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-lg border border-blue-100">
                                             {pickUpLaundryAtShopTasks.length} Tasks
                                         </span>
+                                        {pickUpLaundryAtShopTasks.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    pickUpAllLaundryFromShop(pickUpLaundryAtShopTasks);
+                                                }}
+                                                disabled={pickingUpAllLaundry}
+                                                className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-lg border border-blue-700 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                            >
+                                                {pickingUpAllLaundry ? 'Picking...' : `Pick Up All (${pickUpLaundryAtShopTasks.length})`}
+                                            </button>
+                                        )}
                                         <span className={`text-slate-400 text-xs transition-transform ${openSections.pickupAtShop ? 'rotate-180' : ''}`}>▾</span>
                                     </div>
-                                </button>
+                                </div>
 
                                 <div className={`overflow-hidden transition-[max-height] duration-300 ${openSections.pickupAtShop ? 'max-h-[2000px]' : 'max-h-0'}`}>
                                     <div className="space-y-3 pb-2">
@@ -1798,9 +2040,24 @@ export default function RiderDashboard() {
                                                         }}
                                                     >
                                                         <div className="flex items-start justify-between gap-3">
-                                                            <div className="min-w-0">
+                                                            <div className="min-w-0 flex-1">
                                                                 <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">pickup at shop</p>
                                                                 <p className="text-sm font-black text-blue-900 line-clamp-1">{order.customerName || order.productName || 'Order'}</p>
+                                                                {Array.isArray(order.images) && order.images.length > 0 ? (
+                                                                    <img
+                                                                        src={resolveAssetUrl(order.images[0])}
+                                                                        alt={order.productName || order.customerName || 'Order image'}
+                                                                        className="mt-2 h-20 w-full max-w-[180px] rounded-xl object-cover border border-slate-100 cursor-zoom-in"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            openImageZoom(order.images?.[0], order.productName || order.customerName || 'Order image');
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    <div className="mt-2 h-20 w-full max-w-[180px] rounded-xl border border-slate-100 bg-slate-50 text-[10px] font-black text-slate-400 flex items-center justify-center uppercase tracking-widest">
+                                                                        No image
+                                                                    </div>
+                                                                )}
                                                                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                                                                     <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 uppercase tracking-tighter">
                                                                         {shopName}
@@ -1862,19 +2119,34 @@ export default function RiderDashboard() {
                                     </div>
                                 </button>
 
+                                {sortedSendBackToCustomerTasks.length > 1 && (
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Route Focus</span>
+                                        <select
+                                            value={sendBackSortMode}
+                                            onChange={(e) => setSendBackSortMode(e.target.value as 'distance' | 'time')}
+                                            className="text-[10px] font-black text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1"
+                                        >
+                                            <option value="distance">Shortest distance</option>
+                                            <option value="time">Latest time</option>
+                                        </select>
+                                    </div>
+                                )}
+
                                 <div className={`overflow-hidden transition-[max-height] duration-300 ${openSections.sendBack ? 'max-h-[2000px]' : 'max-h-0'}`}>
                                     <div className="space-y-3 pb-2">
-                                        {sendBackToCustomerTasks.length === 0 ? (
+                                        {sortedSendBackToCustomerTasks.length === 0 ? (
                                             <div className="bg-white rounded-3xl p-5 border border-slate-50 shadow-sm">
                                                 <p className="text-xs font-black text-blue-900">No return deliveries right now</p>
                                                 <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">After you pick up laundry at shop, it will show here</p>
                                             </div>
                                         ) : (
-                                            sendBackToCustomerTasks.map((order) => (
+                                            sortedSendBackToCustomerTasks.map((order) => (
                                                 <div
                                                     key={order._id}
-                                                    className="bg-white rounded-3xl p-5 border border-slate-50 shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 cursor-pointer active:scale-[0.98]"
+                                                    className={`bg-white rounded-3xl p-5 border shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 cursor-pointer active:scale-[0.98] ${activeSendBackOrderId === order._id ? 'border-emerald-200 ring-2 ring-emerald-100' : 'border-slate-50'}`}
                                                     onClick={() => {
+                                                        setActiveSendBackOrderId(order._id);
                                                         const lat = order.deliveryLocation?.coordinates?.[1] ?? order.location?.lat;
                                                         const lon = order.deliveryLocation?.coordinates?.[0] ?? order.location?.lon;
                                                         if (typeof lat === 'number' && typeof lon === 'number') {
@@ -1886,6 +2158,21 @@ export default function RiderDashboard() {
                                                         <div className="min-w-0">
                                                             <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">return delivery</p>
                                                             <p className="text-sm font-black text-blue-900 line-clamp-1">{order.customerName || order.productName || 'Order'}</p>
+                                                            {Array.isArray(order.images) && order.images.length > 0 ? (
+                                                                <img
+                                                                    src={resolveAssetUrl(order.images[0])}
+                                                                    alt={order.productName || order.customerName || 'Order image'}
+                                                                    className="mt-2 h-20 w-full max-w-[180px] rounded-xl object-cover border border-slate-100 cursor-zoom-in"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        openImageZoom(order.images?.[0], order.productName || order.customerName || 'Order image');
+                                                                    }}
+                                                                />
+                                                            ) : (
+                                                                <div className="mt-2 h-20 w-full max-w-[180px] rounded-xl border border-slate-100 bg-slate-50 text-[10px] font-black text-slate-400 flex items-center justify-center uppercase tracking-widest">
+                                                                    No image
+                                                                </div>
+                                                            )}
                                                             <p className="text-[10px] font-bold text-slate-400 mt-1 line-clamp-2">{order.deliveryAddress}</p>
                                                             <div className="flex items-center gap-1.5 mt-2">
                                                                 <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 uppercase tracking-tighter">
@@ -1914,6 +2201,29 @@ export default function RiderDashboard() {
                     </div>
                 </div>
             </div>
+
+            {zoomedImageUrl && (
+                <div
+                    className="fixed inset-0 z-[9999] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={closeImageZoom}
+                >
+                    <div className="relative max-w-5xl w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={closeImageZoom}
+                            className="absolute -top-3 -right-3 h-9 w-9 rounded-full bg-white text-slate-700 text-lg font-black shadow-lg hover:bg-slate-100"
+                            aria-label="Close image preview"
+                        >
+                            ×
+                        </button>
+                        <img
+                            src={zoomedImageUrl}
+                            alt={zoomedImageAlt}
+                            className="max-h-[85vh] w-auto max-w-full rounded-2xl border border-white/20 shadow-2xl"
+                        />
+                    </div>
+                </div>
+            )}
 
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar {

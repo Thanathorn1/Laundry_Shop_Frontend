@@ -29,9 +29,14 @@ export type RoadRouteResult = {
   durationMin: number | null; // เวลาเดินทางโดยประมาณ (นาที)
 };
 
+import { API_BASE_URL } from './api';
+
 // Cache เก็บผลลัพธ์เส้นทางไว้ 20 วินาที เพื่อไม่ต้องเรียก API ซ้ำบ่อยเกินไป
 const ROUTE_CACHE_TTL_MS = 20_000;
 const routeCache = new Map<string, { expiresAt: number; data: RoadRouteResult }>();
+const ROUTE_FAILURE_COOLDOWN_MS = 15_000;
+const routeFailureCooldown = new Map<string, number>();
+const inFlightRequests = new Map<string, Promise<RoadRouteResult>>();
 
 // ปัดเศษพิกัดให้เหมือนกัน (ป้องกัน cache miss จากความแตกต่างเล็กน้อย)
 const roundCoord = (value: number) => Math.round(value * 100000) / 100000;
@@ -40,48 +45,59 @@ const roundCoord = (value: number) => Math.round(value * 100000) / 100000;
 const routeCacheKey = (from: LatLngTuple, to: LatLngTuple) =>
   `${roundCoord(from[0])},${roundCoord(from[1])}->${roundCoord(to[0])},${roundCoord(to[1])}`;
 
-// รายการ OSRM server ที่ใช้ได้ - ลองทีละตัวจนกว่าจะสำเร็จ (fallback)
-const OSRM_SERVERS = [
-  'https://router.project-osrm.org',
-  'https://routing.openstreetmap.de/routed-car',
-];
+function apiUrl(path: string) {
+  const base = API_BASE_URL.replace(/\/+$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${suffix}`;
+}
 
-/**
- * ลองเรียก OSRM server แต่ละตัว
- * - สร้าง URL สำหรับ driving route (รถยนต์)
- * - timeout 8 วินาที ถ้านานกว่านั้นถือว่า fail
- * - แปลง GeoJSON coordinates เป็น [lat, lng] array
- */
-async function tryOsrmServer(server: string, from: LatLngTuple, to: LatLngTuple): Promise<RoadRouteResult | null> {
+async function fetchBackendRoadRoute(
+  from: LatLngTuple,
+  to: LatLngTuple,
+): Promise<RoadRouteResult | null> {
+  if (!API_BASE_URL) return null;
+
   try {
-    // OSRM ใช้รูปแบบ lng,lat (ตรงข้ามกับ Leaflet ที่ใช้ lat,lng)
-    const url = `${server}/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const token = typeof window !== 'undefined'
+      ? localStorage.getItem('access_token')
+      : null;
 
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
+    const url = apiUrl(
+      `/map/road-route?fromLat=${encodeURIComponent(from[0])}&fromLng=${encodeURIComponent(from[1])}&toLat=${encodeURIComponent(to[0])}&toLng=${encodeURIComponent(to[1])}`,
+    );
 
-    if (!res.ok) return null;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
 
-    const data = await res.json();
-    const route = Array.isArray(data?.routes) ? data.routes[0] : null;
-    const coordinates = Array.isArray(route?.geometry?.coordinates) ? route.geometry.coordinates : [];
+    if (!response.ok) return null;
 
-    const points: LatLngTuple[] = coordinates
-      .filter((coord: unknown) => Array.isArray(coord) && coord.length >= 2)
-      .map((coord: unknown) => {
-        const c = coord as [number, number];
-        return [Number(c[1]), Number(c[0])] as LatLngTuple;
-      })
-      .filter((coord: LatLngTuple) => Number.isFinite(coord[0]) && Number.isFinite(coord[1]));
+    const data = (await response.json()) as Partial<RoadRouteResult>;
+    const points = Array.isArray(data?.points)
+      ? data.points.filter(
+          (coord): coord is LatLngTuple =>
+            Array.isArray(coord) &&
+            coord.length >= 2 &&
+            Number.isFinite(Number(coord[0])) &&
+            Number.isFinite(Number(coord[1])),
+        )
+      : [];
 
     if (points.length < 2) return null;
 
     return {
       points,
-      distanceKm: Number.isFinite(route?.distance) ? Number(route.distance) / 1000 : null,
-      durationMin: Number.isFinite(route?.duration) ? Number(route.duration) / 60 : null,
+      distanceKm:
+        typeof data.distanceKm === 'number' && Number.isFinite(data.distanceKm)
+          ? data.distanceKm
+          : null,
+      durationMin:
+        typeof data.durationMin === 'number' && Number.isFinite(data.durationMin)
+          ? data.durationMin
+          : null,
     };
   } catch {
     return null;
@@ -107,18 +123,46 @@ export async function fetchRoadRoute(from: LatLngTuple, to: LatLngTuple): Promis
     return cached.data;
   }
 
-  for (const server of OSRM_SERVERS) {
-    const result = await tryOsrmServer(server, from, to);
+  const cooldownUntil = routeFailureCooldown.get(key) || 0;
+  if (cooldownUntil > now) {
+    return cached?.data || {
+      points: [],
+      distanceKm: null,
+      durationMin: null,
+    };
+  }
+
+  const existingInFlight = inFlightRequests.get(key);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const requestPromise = (async () => {
+    const result = await fetchBackendRoadRoute(from, to);
     if (result) {
+      routeFailureCooldown.delete(key);
       routeCache.set(key, { expiresAt: now + ROUTE_CACHE_TTL_MS, data: result });
       return result;
     }
-  }
 
-  // All servers failed — return empty points so callers can skip drawing any line
-  return {
-    points: [],
-    distanceKm: null,
-    durationMin: null,
-  };
+    routeFailureCooldown.set(key, now + ROUTE_FAILURE_COOLDOWN_MS);
+
+    if (cached) {
+      return cached.data;
+    }
+
+    return {
+      points: [],
+      distanceKm: null,
+      durationMin: null,
+    };
+  })();
+
+  inFlightRequests.set(key, requestPromise);
+
+  try {
+    return await requestPromise;
+  } finally {
+    inFlightRequests.delete(key);
+  }
 }
