@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import UserTopNavbar from "@/components/UserTopNavbar";
 
 type AdminUser = {
   _id: string;
@@ -31,6 +32,7 @@ export default function AdminCustomersPage() {
   const [sortMode, setSortMode] = useState<"alpha-asc" | "alpha-desc" | "newest" | "oldest">("alpha-asc");
   const [backHref, setBackHref] = useState("/admin");
   const [backLabel, setBackLabel] = useState("← Back to Admin");
+  const [fromRole, setFromRole] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -48,12 +50,15 @@ export default function AdminCustomersPage() {
     if (from === "customer") {
       setBackHref("/customer");
       setBackLabel("← Back to Customer");
+      setFromRole("customer");
     } else if (from === "employee") {
       setBackHref("/employee");
       setBackLabel("← Back to Employee");
+      setFromRole("employee");
     } else if (from === "rider") {
       setBackHref("/rider");
       setBackLabel("← Back to Rider");
+      setFromRole("rider");
     }
 
     const authRole = localStorage.getItem("auth_role");
@@ -226,8 +231,25 @@ export default function AdminCustomersPage() {
     return date.toLocaleString();
   };
 
+  const navbarConfig = fromRole === "customer"
+    ? { role: "user" as const, homeHref: "/customer", settingsHref: "/customer/settings", extraItems: [{ label: "New Order", href: "/customer/create-order" }, { label: "History", href: "/customer/history" }] }
+    : fromRole === "employee"
+    ? { role: "employee" as const, homeHref: "/employee", settingsHref: "/employee/settings", extraItems: [{ label: "Shop", href: "/employee/shop" }] }
+    : fromRole === "rider"
+    ? { role: "rider" as const, homeHref: "/rider", settingsHref: "/rider/settings", extraItems: [{ label: "Profile", href: "/rider/profile" }, { label: "My Tasks", href: "/rider/tasks" }] }
+    : null;
+
   return (
-    <div className="min-h-screen bg-slate-50 p-8 font-sans text-blue-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-blue-900">
+      {navbarConfig && (
+        <UserTopNavbar
+          role={navbarConfig.role}
+          homeHref={navbarConfig.homeHref}
+          settingsHref={navbarConfig.settingsHref}
+          extraItems={navbarConfig.extraItems}
+        />
+      )}
+      <div className="p-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -386,6 +408,7 @@ export default function AdminCustomersPage() {
             </table>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

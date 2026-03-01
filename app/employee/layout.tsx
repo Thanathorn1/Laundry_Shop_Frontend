@@ -11,7 +11,6 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
         settingsHref="/employee/settings"
         extraItems={[
           { label: "Shop", href: "/employee/shop" },
-          { label: "Users", href: "/employee/users" },
         ]}
       />
       <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>

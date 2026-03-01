@@ -183,9 +183,14 @@ export default function CustomerHistoryPage() {
       </aside>
 
       <main className="flex-1 p-8 pb-24 md:p-12 md:pb-12">
-        <div className="mb-8">
-          <h1 className="text-4xl font-black tracking-tight text-blue-900">Order History</h1>
-          <p className="text-blue-700/60 text-lg font-medium mt-2">View all your laundry orders and statuses.</p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-black tracking-tight text-blue-900">Order History</h1>
+            <p className="text-blue-700/60 text-lg font-medium mt-2">View all your laundry orders and statuses.</p>
+          </div>
+          <Link href="/customer" className="shrink-0 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50">
+            ← Back
+          </Link>
         </div>
 
         {loading ? (

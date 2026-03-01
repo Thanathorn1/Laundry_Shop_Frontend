@@ -344,12 +344,17 @@ export default function EmployeeShopListPage() {
           <h1 className="text-3xl font-black text-blue-900 tracking-tight">Shops</h1>
           <p className="text-sm text-blue-700/60 font-medium">View shops and request adding a new shop pin.</p>
         </div>
+        <div className="flex items-center gap-2">
+        <Link href="/employee" className="shrink-0 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50">
+          ← Back
+        </Link>
         <button
           onClick={() => { if (showForm) { resetForm(); } else { setEditingShop(null); setShowForm(true); } }}
           className="rounded-xl border border-blue-200 bg-blue-600 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-blue-700 transition-colors"
         >
           {showForm ? "Cancel" : "+ Request Shop Pin"}
         </button>
+        </div>
       </div>
 
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</div>}

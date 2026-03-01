@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { apiFetch, API_BASE_URL } from "@/lib/api";
 import "leaflet/dist/leaflet.css";
 
@@ -231,9 +232,14 @@ export default function MyTasks() {
     return (
         <div className="px-4 py-6 sm:px-6 lg:px-10 relative min-h-screen flex flex-col max-w-7xl mx-auto">
             {/* Header */}
-            <header className="mb-6 sm:mb-8">
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">My Tasks</h1>
-                <p className="text-slate-400 text-sm mt-1">Manage your active and past deliveries</p>
+            <header className="mb-6 sm:mb-8 flex items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">My Tasks</h1>
+                    <p className="text-slate-400 text-sm mt-1">Manage your active and past deliveries</p>
+                </div>
+                <Link href="/rider" className="shrink-0 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50">
+                    ← Back
+                </Link>
             </header>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8 flex-1">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { apiFetch, apiUpload, API_BASE_URL } from '@/lib/api';
 
 interface RiderProfile {
@@ -200,9 +201,14 @@ export default function RiderProfile() {
     return (
         <div className="px-4 py-6 sm:px-6 lg:px-8">
             <div className="max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-100">
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Rider Profile</h1>
-                    <p className="text-slate-400 text-sm mt-1">Update your professional details and vehicle information.</p>
+                <div className="mb-8 flex items-start justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Rider Profile</h1>
+                        <p className="text-slate-400 text-sm mt-1">Update your professional details and vehicle information.</p>
+                    </div>
+                    <Link href="/rider" className="shrink-0 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-slate-50">
+                        ← Back
+                    </Link>
                 </div>
 
                 {/* Image uploads - responsive grid */}
