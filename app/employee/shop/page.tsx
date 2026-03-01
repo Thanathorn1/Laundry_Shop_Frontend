@@ -116,11 +116,32 @@ export default function EmployeeShopListPage() {
   const [shopName, setShopName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [totalMachines, setTotalMachines] = useState("10");
+  const [totalDryingMachines, setTotalDryingMachines] = useState("8");
   const [machineS, setMachineS] = useState("4");
   const [machineM, setMachineM] = useState("3");
   const [machineL, setMachineL] = useState("3");
   const [latitude, setLatitude] = useState(String(DEFAULT_COORDS.lat));
   const [longitude, setLongitude] = useState(String(DEFAULT_COORDS.lng));
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  /* ── image file handler ── */
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be less than 5 MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setPhotoBase64(result);
+      setImagePreview(result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   /* map refs */
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -226,49 +247,32 @@ export default function EmployeeShopListPage() {
     setError(null);
     setMessage(null);
     try {
-      if (editingShop) {
-        // Edit existing shop
-        await apiFetch(`/map/shops/${editingShop._id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            shopName: shopName.trim(),
-            label: shopName.trim(),
-            phoneNumber: phoneNumber.trim(),
-            totalWashingMachines: Number(totalMachines) || 10,
-            machineSizeConfig: {
-              s: Number(machineS) || 0,
-              m: Number(machineM) || 0,
-              l: Number(machineL) || 0,
-            },
-            location: {
-              type: "Point",
-              coordinates: [Number(longitude), Number(latitude)],
-            },
-          }),
-        });
-        setMessage("Shop updated! Changes are pending admin approval.");
-      } else {
-        // Create new shop
-        await apiFetch("/map/shops", {
-          method: "POST",
-          body: JSON.stringify({
-            shopName: shopName.trim(),
-            label: shopName.trim(),
-            phoneNumber: phoneNumber.trim(),
-            totalWashingMachines: Number(totalMachines) || 10,
-            machineSizeConfig: {
-              s: Number(machineS) || 0,
-              m: Number(machineM) || 0,
-              l: Number(machineL) || 0,
-            },
-            location: {
-              type: "Point",
-              coordinates: [Number(longitude), Number(latitude)],
-            },
-          }),
-        });
-        setMessage("Shop pin request submitted! Waiting for admin approval.");
-      }
+      const payload: any = {
+        shopName: shopName.trim(),
+        label: shopName.trim(),
+        phoneNumber: phoneNumber.trim(),
+        totalWashingMachines: Number(totalMachines) || 10,
+        totalDryingMachines: Number(totalDryingMachines) || 8,
+        machineSizeConfig: {
+          s: Number(machineS) || 0,
+          m: Number(machineM) || 0,
+          l: Number(machineL) || 0,
+        },
+        location: {
+          type: "Point",
+          coordinates: [Number(longitude), Number(latitude)],
+        },
+      };
+      if (photoBase64) payload.photoImage = photoBase64;
+
+      await apiFetch(
+        editingShop ? `/map/shops/${editingShop._id}` : "/map/shops",
+        {
+          method: editingShop ? "PUT" : "POST",
+          body: JSON.stringify(payload),
+        },
+      );
+      setMessage(editingShop ? "Shop updated! Changes are pending admin approval." : "Shop pin request submitted! Waiting for admin approval.");
       resetForm();
       fetchShops();
     } catch (e) {
@@ -283,11 +287,15 @@ export default function EmployeeShopListPage() {
     setShopName("");
     setPhoneNumber("");
     setTotalMachines("10");
+    setTotalDryingMachines("8");
     setMachineS("4");
     setMachineM("3");
     setMachineL("3");
     setLatitude(String(DEFAULT_COORDS.lat));
     setLongitude(String(DEFAULT_COORDS.lng));
+    setPhotoBase64(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setShowForm(false);
     setEditingShop(null);
   };
@@ -300,6 +308,8 @@ export default function EmployeeShopListPage() {
     const mc = (shop as any).machineSizeConfig;
     const tw = (shop as any).totalWashingMachines;
     setTotalMachines(String(tw || 10));
+    const td = (shop as any).totalDryingMachines;
+    setTotalDryingMachines(String(td ?? 8));
     setMachineS(String(mc?.s ?? 4));
     setMachineM(String(mc?.m ?? 3));
     setMachineL(String(mc?.l ?? 3));
@@ -307,6 +317,11 @@ export default function EmployeeShopListPage() {
       setLongitude(String(shop.location.coordinates[0]));
       setLatitude(String(shop.location.coordinates[1]));
     }
+    // show existing image preview
+    const existingImg = resolveAsset(shop.photoImage);
+    setImagePreview(existingImg || null);
+    setPhotoBase64(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setShowForm(true);
     setError(null);
     setMessage(null);
@@ -357,10 +372,43 @@ export default function EmployeeShopListPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-4">
+          {/* Shop Image */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Shop Image</label>
+            <div className="flex items-center gap-4">
+              {imagePreview && (
+                <img src={imagePreview} alt="Preview" className="h-20 w-28 rounded-lg object-cover border border-slate-200" />
+              )}
+              <div className="flex flex-col gap-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="text-sm text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+                />
+                <span className="text-[10px] text-slate-400">Max 5 MB. JPG, PNG, WebP supported.</span>
+                {imagePreview && (
+                  <button
+                    type="button"
+                    onClick={() => { setPhotoBase64(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                    className="text-[10px] font-semibold text-rose-500 hover:text-rose-700 text-left"
+                  >
+                    Remove image
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-5">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Total Machines</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Washing Machines</label>
               <input type="number" value={totalMachines} onChange={(e) => setTotalMachines(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Drying Machines</label>
+              <input type="number" value={totalDryingMachines} onChange={(e) => setTotalDryingMachines(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Size S</label>
