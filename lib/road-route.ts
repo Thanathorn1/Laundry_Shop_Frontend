@@ -32,9 +32,9 @@ export type RoadRouteResult = {
 import { API_BASE_URL } from './api';
 
 // Cache เก็บผลลัพธ์เส้นทางไว้ 20 วินาที เพื่อไม่ต้องเรียก API ซ้ำบ่อยเกินไป
-const ROUTE_CACHE_TTL_MS = 20_000;
+const ROUTE_CACHE_TTL_MS = 60_000;
 const routeCache = new Map<string, { expiresAt: number; data: RoadRouteResult }>();
-const ROUTE_FAILURE_COOLDOWN_MS = 15_000;
+const ROUTE_FAILURE_COOLDOWN_MS = 5_000;
 const routeFailureCooldown = new Map<string, number>();
 const inFlightRequests = new Map<string, Promise<RoadRouteResult>>();
 

@@ -241,6 +241,8 @@ export default function RiderDashboard() {
     const [activeNearbyOrderId, setActiveNearbyOrderId] = useState<string | null>(null);
     const [activeNearbyShopId, setActiveNearbyShopId] = useState<string | null>(null);
     const [shopRoutePoints, setShopRoutePoints] = useState<[number, number][]>([]);
+    const [pickupAtShopSortMode, setPickupAtShopSortMode] = useState<'distance' | 'time'>('distance');
+    const [activePickupAtShopOrderId, setActivePickupAtShopOrderId] = useState<string | null>(null);
 
     const socketRef = useRef<ReturnType<typeof io> | null>(null);
     const refreshTimerRef = useRef<number | null>(null);
@@ -739,8 +741,9 @@ export default function RiderDashboard() {
                     return Boolean(activeNearbyOrderId) && task._id === activeNearbyOrderId;
                 }
                 if (task.status === 'picked_up' || task.status === 'laundry_done') {
-                    // Only show when Pick Up Laundry At Shop section is open
-                    return openSections.pickupAtShop;
+                    // Only show when Pick Up Laundry At Shop section is open and this is the focused card
+                    if (!openSections.pickupAtShop) return false;
+                    return Boolean(activePickupAtShopOrderId) && task._id === activePickupAtShopOrderId;
                 }
                 if (task.status === 'out_for_delivery') {
                     // Only show when Send Back to Customer section is open
@@ -786,7 +789,16 @@ export default function RiderDashboard() {
         return () => {
             active = false;
         };
-    }, [myTasks, userLocation, shopsById, handoverShopByOrderId, activeSendBackOrderId, sendBackSortMode, openSections, activeNearbyOrderId]);
+    }, [myTasks, userLocation, shopsById, handoverShopByOrderId, activeSendBackOrderId, sendBackSortMode, openSections, activeNearbyOrderId, activePickupAtShopOrderId]);
+
+    // Auto-select first nearby shop when the list changes (so route appears on first open)
+    useEffect(() => {
+        if (!nearbyShops.length) { setActiveNearbyShopId(null); return; }
+        setActiveNearbyShopId((prev) => {
+            if (prev && nearbyShops.some(({ shop }) => shop._id === prev)) return prev;
+            return nearbyShops[0]?.shop._id ?? null;
+        });
+    }, [nearbyShops]);
 
     // Draw road line from rider to the selected nearby shop
     useEffect(() => {
@@ -814,6 +826,36 @@ export default function RiderDashboard() {
         () => (myTasks || []).filter((o) => o?.status === 'laundry_done'),
         [myTasks]
     );
+
+    const sortedPickupAtShopTasks = useMemo(() => {
+        const list = [...pickUpLaundryAtShopTasks];
+        const getOrderTime = (order: Order) => {
+            const candidate = order.updatedAt || order.createdAt || '';
+            const parsed = candidate ? new Date(candidate).getTime() : 0;
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        list.sort((a, b) => {
+            if (pickupAtShopSortMode === 'time') return getOrderTime(b) - getOrderTime(a);
+            const aShop = a.shopId ? shopsById.get(String(a.shopId)) : undefined;
+            const bShop = b.shopId ? shopsById.get(String(b.shopId)) : undefined;
+            const aCoords = aShop?.location?.coordinates;
+            const bCoords = bShop?.location?.coordinates;
+            const aDist = (userLocation && Array.isArray(aCoords) && aCoords.length >= 2)
+                ? calculateDistance(userLocation.lat, userLocation.lon, aCoords[1], aCoords[0]) : Infinity;
+            const bDist = (userLocation && Array.isArray(bCoords) && bCoords.length >= 2)
+                ? calculateDistance(userLocation.lat, userLocation.lon, bCoords[1], bCoords[0]) : Infinity;
+            return aDist - bDist;
+        });
+        return list;
+    }, [pickUpLaundryAtShopTasks, pickupAtShopSortMode, userLocation, shopsById]);
+
+    useEffect(() => {
+        if (!sortedPickupAtShopTasks.length) { setActivePickupAtShopOrderId(null); return; }
+        setActivePickupAtShopOrderId((prev) => {
+            if (prev && sortedPickupAtShopTasks.some((o) => o._id === prev)) return prev;
+            return sortedPickupAtShopTasks[0]._id;
+        });
+    }, [sortedPickupAtShopTasks]);
 
     const sendBackToCustomerTasks = useMemo(
         () => (myTasks || []).filter((o) => o?.status === 'out_for_delivery'),
@@ -2181,6 +2223,20 @@ export default function RiderDashboard() {
                                     </div>
                                 </div>
 
+                                {sortedPickupAtShopTasks.length > 1 && (
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Route Focus</span>
+                                        <select
+                                            value={pickupAtShopSortMode}
+                                            onChange={(e) => setPickupAtShopSortMode(e.target.value as 'distance' | 'time')}
+                                            className="text-[10px] font-black text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1"
+                                        >
+                                            <option value="distance">Shortest distance</option>
+                                            <option value="time">Latest time</option>
+                                        </select>
+                                    </div>
+                                )}
+
                                 <div className={`overflow-hidden transition-[max-height] duration-300 ${openSections.pickupAtShop ? 'max-h-[2000px]' : 'max-h-0'}`}>
                                     <div className="space-y-3 pb-2">
                                         {pickUpLaundryAtShopTasks.length === 0 ? (
@@ -2318,10 +2374,9 @@ export default function RiderDashboard() {
                                                     className={`bg-white rounded-3xl p-5 border shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 cursor-pointer active:scale-[0.98] ${activeSendBackOrderId === order._id ? 'border-emerald-200 ring-2 ring-emerald-100' : 'border-slate-50'}`}
                                                     onClick={() => {
                                                         setActiveSendBackOrderId(order._id);
-                                                        const lat = order.deliveryLocation?.coordinates?.[1] ?? order.location?.lat;
-                                                        const lon = order.deliveryLocation?.coordinates?.[0] ?? order.location?.lon;
-                                                        if (typeof lat === 'number' && typeof lon === 'number') {
-                                                            setMapView({ center: [lat, lon], zoom: 16 });
+                                                        const target = getDeliveryTarget(order);
+                                                        if (target) {
+                                                            setMapView({ center: target, zoom: 16 });
                                                         }
                                                     }}
                                                 >
