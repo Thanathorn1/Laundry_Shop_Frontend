@@ -35,10 +35,21 @@ const Polyline = dynamic(
 const MapController = dynamic(
     () => import('react-leaflet').then((mod) => {
         const { useMap } = mod;
-        return function MapController({ center, zoom }: { center: [number, number], zoom: number }) {
+        return function MapController({ center, zoom, onMapReady }: {
+            center: [number, number];
+            zoom: number;
+            onMapReady?: (map: any) => void;
+        }) {
             const map = useMap();
+            const readyFiredRef = useRef(false);
             useEffect(() => {
-                map.setView(center, zoom);
+                if (!readyFiredRef.current && onMapReady) {
+                    readyFiredRef.current = true;
+                    onMapReady(map);
+                }
+            }, [map, onMapReady]);
+            useEffect(() => {
+                map.flyTo(center, zoom, { duration: 0.6 });
             }, [center, zoom, map]);
             return null;
         };
@@ -182,6 +193,8 @@ export default function RiderDashboard() {
     const [error, setError] = useState<string | null>(null);
     const [authBlocked, setAuthBlocked] = useState(false);
     const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+    const locationInitializedRef = useRef(false);
+    const mapInstanceRef = useRef<any>(null);
     const [maxDistance, setMaxDistance] = useState<number>(0);
     const [mapView, setMapView] = useState<{ center: [number, number], zoom: number }>({
         center: [13.7563, 100.5018], // Default Bangkok
@@ -372,8 +385,9 @@ export default function RiderDashboard() {
                         }
                     }
 
-                    // Only auto-center on first load to avoid disrupting user interaction
-                    if (!userLocation) {
+                    // Only auto-center on first GPS fix — use a ref to avoid stale-closure re-centering
+                    if (!locationInitializedRef.current) {
+                        locationInitializedRef.current = true;
                         setMapView({ center: [coords.lat, coords.lon], zoom: 13 });
                     }
                 },
@@ -1181,7 +1195,11 @@ export default function RiderDashboard() {
                                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                 />
-                                <MapController center={mapView.center} zoom={mapView.zoom} />
+                                <MapController
+                                    center={mapView.center}
+                                    zoom={mapView.zoom}
+                                    onMapReady={(map) => { mapInstanceRef.current = map; }}
+                                />
 
                                 {/* วาดเส้นทางถนนจากไรเดอร์ไปจุดหมาย (Polyline) */}
                                 {/* points มาจาก fetchRoadRoute() -> เส้นทางถนนจริงจาก OSRM */}
@@ -1592,6 +1610,44 @@ export default function RiderDashboard() {
                         )}
                     </MapContainer>
                 )}
+
+                {/* Custom map controls - bottom right */}
+                <div className="absolute bottom-6 right-4 flex flex-col gap-2 z-[400] pointer-events-auto">
+                    {/* Locate me */}
+                    <button
+                        onClick={() => {
+                            if (userLocation) {
+                                setMapView({ center: [userLocation.lat, userLocation.lon], zoom: 15 });
+                            } else if (navigator.geolocation) {
+                                navigator.geolocation.getCurrentPosition((pos) => {
+                                    const c = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                                    setUserLocation(c);
+                                    setMapView({ center: [c.lat, c.lon], zoom: 15 });
+                                });
+                            }
+                        }}
+                        className="h-11 w-11 rounded-full bg-white shadow-xl flex items-center justify-center text-blue-600 hover:bg-blue-50 active:scale-95 transition-all border border-slate-200"
+                        title="My location"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+                            <circle cx="12" cy="12" r="7" strokeWidth={1.5} fill="none" />
+                        </svg>
+                    </button>
+                    {/* Zoom in */}
+                    <button
+                        onClick={() => mapInstanceRef.current?.zoomIn()}
+                        className="h-11 w-11 rounded-2xl bg-white shadow-xl flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200 text-xl font-bold"
+                        title="Zoom in"
+                    >+</button>
+                    {/* Zoom out */}
+                    <button
+                        onClick={() => mapInstanceRef.current?.zoomOut()}
+                        className="h-11 w-11 rounded-2xl bg-white shadow-xl flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all border border-slate-200 text-2xl font-bold leading-none"
+                        title="Zoom out"
+                    >−</button>
+                </div>
             </div>
 
             {/* Top Bar - Floating Layer */}
