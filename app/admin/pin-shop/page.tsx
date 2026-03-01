@@ -128,6 +128,7 @@ type Shop = {
   phoneNumber?: string;
   photoImage?: string;
   totalWashingMachines?: number;
+  totalDryingMachines?: number;
   machineSizeConfig?: {
     s?: number;
     m?: number;
@@ -172,6 +173,7 @@ export default function AdminPinShopPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [photoImage, setPhotoImage] = useState("");
   const [totalWashingMachines, setTotalWashingMachines] = useState("10");
+  const [totalDryingMachines, setTotalDryingMachines] = useState("10");
   const [machineS, setMachineS] = useState("4");
   const [machineM, setMachineM] = useState("3");
   const [machineL, setMachineL] = useState("3");
@@ -184,6 +186,7 @@ export default function AdminPinShopPage() {
   const [editPhone, setEditPhone] = useState("");
   const [editPhoto, setEditPhoto] = useState("");
   const [editTotalWashingMachines, setEditTotalWashingMachines] = useState("10");
+  const [editTotalDryingMachines, setEditTotalDryingMachines] = useState("10");
   const [editMachineS, setEditMachineS] = useState("4");
   const [editMachineM, setEditMachineM] = useState("3");
   const [editMachineL, setEditMachineL] = useState("3");
@@ -314,6 +317,7 @@ export default function AdminPinShopPage() {
         setEditPhone(shop.phoneNumber || "");
         setEditPhoto(shop.photoImage || "");
         setEditTotalWashingMachines(String(shop.totalWashingMachines || 10));
+        setEditTotalDryingMachines(String(shop.totalDryingMachines ?? shop.totalWashingMachines ?? 10));
         setEditMachineS(String(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10));
         setEditMachineM(String(shop.machineSizeConfig?.m ?? 0));
         setEditMachineL(String(shop.machineSizeConfig?.l ?? 0));
@@ -540,8 +544,13 @@ export default function AdminPinShopPage() {
     const machineMCount = Math.max(0, Math.floor(Number(machineM) || 0));
     const machineLCount = Math.max(0, Math.floor(Number(machineL) || 0));
     const machineCount = machineSCount + machineMCount + machineLCount;
+    const dryMachineCount = Math.max(0, Math.floor(Number(totalDryingMachines) || 0));
     if (machineCount < 1) {
       setError("At least 1 machine is required (S/M/L)");
+      return;
+    }
+    if (dryMachineCount < 1) {
+      setError("At least 1 dry machine is required");
       return;
     }
 
@@ -555,6 +564,7 @@ export default function AdminPinShopPage() {
           phoneNumber: phoneNumber.trim(),
           photoImage: photoImage.trim(),
           totalWashingMachines: machineCount,
+          totalDryingMachines: dryMachineCount,
           machineSizeConfig: {
             s: machineSCount,
             m: machineMCount,
@@ -569,6 +579,7 @@ export default function AdminPinShopPage() {
       setPhoneNumber("");
       setPhotoImage("");
       setTotalWashingMachines("10");
+      setTotalDryingMachines("10");
       setMachineS("4");
       setMachineM("3");
       setMachineL("3");
@@ -587,6 +598,7 @@ export default function AdminPinShopPage() {
     setEditPhone(shop.phoneNumber || "");
     setEditPhoto(shop.photoImage || "");
     setEditTotalWashingMachines(String(shop.totalWashingMachines || 10));
+    setEditTotalDryingMachines(String(shop.totalDryingMachines ?? shop.totalWashingMachines ?? 10));
     setEditMachineS(String(shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10));
     setEditMachineM(String(shop.machineSizeConfig?.m ?? 0));
     setEditMachineL(String(shop.machineSizeConfig?.l ?? 0));
@@ -607,8 +619,13 @@ export default function AdminPinShopPage() {
     const machineMCount = Math.max(0, Math.floor(Number(editMachineM) || 0));
     const machineLCount = Math.max(0, Math.floor(Number(editMachineL) || 0));
     const machineCount = machineSCount + machineMCount + machineLCount;
+    const dryMachineCount = Math.max(0, Math.floor(Number(editTotalDryingMachines) || 0));
     if (machineCount < 1) {
       setError("At least 1 machine is required (S/M/L)");
+      return;
+    }
+    if (dryMachineCount < 1) {
+      setError("At least 1 dry machine is required");
       return;
     }
 
@@ -621,6 +638,7 @@ export default function AdminPinShopPage() {
           phoneNumber: editPhone.trim(),
           photoImage: editPhoto.trim(),
           totalWashingMachines: machineCount,
+          totalDryingMachines: dryMachineCount,
           machineSizeConfig: {
             s: machineSCount,
             m: machineMCount,
@@ -761,6 +779,10 @@ export default function AdminPinShopPage() {
               <input value={totalWashingMachines} readOnly placeholder="Total Washing Machines" className="w-full rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
             </label>
             <label className="space-y-1">
+              <span className="text-xs font-bold text-blue-700">Total Dry Machines</span>
+              <input value={totalDryingMachines} onChange={(e) => setTotalDryingMachines(e.target.value)} placeholder="Total Dry Machines" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
               <span className="text-xs font-bold text-blue-700">Latitude</span>
               <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="Latitude" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
             </label>
@@ -857,6 +879,10 @@ export default function AdminPinShopPage() {
                           <span className="text-xs font-bold text-blue-700">Total Washing Machines</span>
                           <input value={editTotalWashingMachines} readOnly placeholder="Total Washing Machines" className="w-full rounded-xl border border-zinc-300 bg-slate-50 px-3 py-2 text-sm text-zinc-600" />
                         </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-bold text-blue-700">Total Dry Machines</span>
+                          <input value={editTotalDryingMachines} onChange={(e) => setEditTotalDryingMachines(e.target.value)} placeholder="Total Dry Machines" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+                        </label>
                         <input type="file" accept="image/*" onChange={(e) => onEditPhotoFileChange(e.target.files?.[0] ?? null)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm md:col-span-2" />
                         {editPhoto ? (
                           <img src={toImageSrc(editPhoto)} alt="Edit shop preview" className="h-32 w-48 rounded-xl border border-slate-200 object-cover md:col-span-2" onError={(e) => {
@@ -881,7 +907,8 @@ export default function AdminPinShopPage() {
                         <div className="min-w-0">
                           <p className="font-black text-blue-900">{shop.shopName || shop.label || "Laundry Shop"}</p>
                           <p className="text-xs font-semibold text-blue-600">Phone: {shop.phoneNumber || "-"}</p>
-                          <p className="text-xs font-semibold text-indigo-600">Machines: {shop.machineAvailable ?? 0} available / {shop.totalWashingMachines ?? 10} total</p>
+                          <p className="text-xs font-semibold text-indigo-600">Wash machines: {shop.machineAvailable ?? 0} available / {shop.totalWashingMachines ?? 10} total</p>
+                          <p className="text-xs font-semibold text-indigo-500">Dry machines: {shop.totalDryingMachines ?? shop.totalWashingMachines ?? 10} total</p>
                           <p className="text-xs font-semibold text-indigo-500">S/M/L: {shop.machineSizeConfig?.s ?? shop.totalWashingMachines ?? 10}/{shop.machineSizeConfig?.m ?? 0}/{shop.machineSizeConfig?.l ?? 0}</p>
                           <p className="text-xs font-semibold text-amber-600">Status: {shop.approvalStatus || 'approved'}</p>
                           <p className="text-xs font-semibold text-blue-500">{lat != null && lng != null ? `${lat}, ${lng}` : "-"}</p>
