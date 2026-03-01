@@ -300,11 +300,15 @@ export default function RiderDashboard() {
         const roleFromToken = getRoleFromAccessToken(token);
 
         const isRiderSession = Boolean(token) &&
-            (roleFromStorage === 'rider' || (!roleFromStorage && roleFromToken === 'rider'));
+            (
+                roleFromStorage === 'rider' ||
+                roleFromStorage === 'admin' ||
+                (!roleFromStorage && (roleFromToken === 'rider' || roleFromToken === 'admin'))
+            );
 
         if (!isRiderSession) {
             setAuthBlocked(true);
-            setError('Unauthorized: please sign in with a rider account.');
+            setError('Unauthorized: please sign in with a rider or admin account.');
             setLoading(false);
             return;
         }
