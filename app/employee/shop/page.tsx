@@ -110,6 +110,7 @@ export default function EmployeeShopListPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingShop, setEditingShop] = useState<Shop | null>(null);
 
   /* form fields */
   const [shopName, setShopName] = useState("");
@@ -218,41 +219,107 @@ export default function EmployeeShopListPage() {
     );
   };
 
-  /* ── submit new shop pin request ── */
+  /* ── submit new shop pin request or edit ── */
   const handleSubmit = async () => {
     if (!shopName.trim()) { setError("Shop name is required"); return; }
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      await apiFetch("/map/shops", {
-        method: "POST",
-        body: JSON.stringify({
-          shopName: shopName.trim(),
-          label: shopName.trim(),
-          phoneNumber: phoneNumber.trim(),
-          totalWashingMachines: Number(totalMachines) || 10,
-          machineSizeConfig: {
-            s: Number(machineS) || 0,
-            m: Number(machineM) || 0,
-            l: Number(machineL) || 0,
-          },
-          location: {
-            type: "Point",
-            coordinates: [Number(longitude), Number(latitude)],
-          },
-        }),
-      });
-      setMessage("Shop pin request submitted! Waiting for admin approval.");
-      setShopName("");
-      setPhoneNumber("");
-      setShowForm(false);
+      if (editingShop) {
+        // Edit existing shop
+        await apiFetch(`/map/shops/${editingShop._id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            shopName: shopName.trim(),
+            label: shopName.trim(),
+            phoneNumber: phoneNumber.trim(),
+            totalWashingMachines: Number(totalMachines) || 10,
+            machineSizeConfig: {
+              s: Number(machineS) || 0,
+              m: Number(machineM) || 0,
+              l: Number(machineL) || 0,
+            },
+            location: {
+              type: "Point",
+              coordinates: [Number(longitude), Number(latitude)],
+            },
+          }),
+        });
+        setMessage("Shop updated! Changes are pending admin approval.");
+      } else {
+        // Create new shop
+        await apiFetch("/map/shops", {
+          method: "POST",
+          body: JSON.stringify({
+            shopName: shopName.trim(),
+            label: shopName.trim(),
+            phoneNumber: phoneNumber.trim(),
+            totalWashingMachines: Number(totalMachines) || 10,
+            machineSizeConfig: {
+              s: Number(machineS) || 0,
+              m: Number(machineM) || 0,
+              l: Number(machineL) || 0,
+            },
+            location: {
+              type: "Point",
+              coordinates: [Number(longitude), Number(latitude)],
+            },
+          }),
+        });
+        setMessage("Shop pin request submitted! Waiting for admin approval.");
+      }
+      resetForm();
       fetchShops();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create shop pin");
+      setError(e instanceof Error ? e.message : editingShop ? "Failed to update shop" : "Failed to create shop pin");
     } finally {
       setSaving(false);
     }
+  };
+
+  /* ── reset form ── */
+  const resetForm = () => {
+    setShopName("");
+    setPhoneNumber("");
+    setTotalMachines("10");
+    setMachineS("4");
+    setMachineM("3");
+    setMachineL("3");
+    setLatitude(String(DEFAULT_COORDS.lat));
+    setLongitude(String(DEFAULT_COORDS.lng));
+    setShowForm(false);
+    setEditingShop(null);
+  };
+
+  /* ── open edit form ── */
+  const handleEdit = (shop: Shop) => {
+    setEditingShop(shop);
+    setShopName(shop.shopName || shop.label || "");
+    setPhoneNumber(shop.phoneNumber || "");
+    const mc = (shop as any).machineSizeConfig;
+    const tw = (shop as any).totalWashingMachines;
+    setTotalMachines(String(tw || 10));
+    setMachineS(String(mc?.s ?? 4));
+    setMachineM(String(mc?.m ?? 3));
+    setMachineL(String(mc?.l ?? 3));
+    if (shop.location?.coordinates?.length === 2) {
+      setLongitude(String(shop.location.coordinates[0]));
+      setLatitude(String(shop.location.coordinates[1]));
+    }
+    setShowForm(true);
+    setError(null);
+    setMessage(null);
+
+    // Update map marker if already initialized
+    setTimeout(() => {
+      if (mapRef.current && markerRef.current && shop.location?.coordinates?.length === 2) {
+        const lat = shop.location.coordinates[1];
+        const lng = shop.location.coordinates[0];
+        markerRef.current.setLatLng([lat, lng]);
+        mapRef.current.setView([lat, lng], 15);
+      }
+    }, 300);
   };
 
   return (
@@ -263,7 +330,7 @@ export default function EmployeeShopListPage() {
           <p className="text-sm text-blue-700/60 font-medium">View shops and request adding a new shop pin.</p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => { if (showForm) { resetForm(); } else { setEditingShop(null); setShowForm(true); } }}
           className="rounded-xl border border-blue-200 bg-blue-600 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-blue-700 transition-colors"
         >
           {showForm ? "Cancel" : "+ Request Shop Pin"}
@@ -276,8 +343,8 @@ export default function EmployeeShopListPage() {
       {/* ── New Shop Pin Form ── */}
       {showForm && (
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
-          <h2 className="text-lg font-bold text-blue-900">Request New Shop Pin</h2>
-          <p className="text-xs text-amber-600 font-semibold">Your shop pin will be pending until admin approves it.</p>
+          <h2 className="text-lg font-bold text-blue-900">{editingShop ? "Edit Shop" : "Request New Shop Pin"}</h2>
+          <p className="text-xs text-amber-600 font-semibold">{editingShop ? "After editing, the shop will be pending until admin re-approves it." : "Your shop pin will be pending until admin approves it."}</p>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -329,7 +396,7 @@ export default function EmployeeShopListPage() {
             disabled={saving}
             className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {saving ? "Submitting..." : "Submit Shop Pin Request"}
+            {saving ? "Submitting..." : editingShop ? "Update Shop" : "Submit Shop Pin Request"}
           </button>
         </div>
       )}
@@ -354,17 +421,25 @@ export default function EmployeeShopListPage() {
                   </span>
                 </div>
                 {shop.phoneNumber && <p className="mt-1 text-xs text-slate-500">☎ {shop.phoneNumber}</p>}
-                {!isPending && (
-                  <Link
-                    href={`/employee/shop/${shop._id}`}
-                    className="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-blue-200 px-3 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-50 transition-colors"
+                <div className="mt-3 flex flex-col gap-2">
+                  {!isPending && (
+                    <Link
+                      href={`/employee/shop/${shop._id}`}
+                      className="inline-flex w-full items-center justify-center rounded-lg border border-blue-200 px-3 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-50 transition-colors"
+                    >
+                      View Orders →
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => handleEdit(shop)}
+                    className="inline-flex w-full items-center justify-center rounded-lg border border-amber-200 px-3 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-colors"
                   >
-                    View Orders →
-                  </Link>
-                )}
-                {isPending && (
-                  <p className="mt-2 text-[11px] font-semibold text-amber-600">Waiting for admin approval...</p>
-                )}
+                    ✏️ Edit Shop
+                  </button>
+                  {isPending && (
+                    <p className="text-[11px] font-semibold text-amber-600">Waiting for admin approval...</p>
+                  )}
+                </div>
               </div>
             );
           })}
