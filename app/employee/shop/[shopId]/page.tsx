@@ -38,6 +38,7 @@ type ShopOrder = {
 
 type MyEmployeeProfile = {
   _id: string;
+  role?: 'user' | 'rider' | 'employee' | 'admin';
   assignedShopId?: string | null;
   assignedShopIds?: string[];
 };
@@ -92,7 +93,7 @@ export default function EmployeeShopPage() {
     return Array.isArray(value.assignedShopIds) && value.assignedShopIds.map(String).includes(String(targetShopId));
   };
 
-  const canManageJoinRequests = isMemberOfShop(me, shopId);
+  const canManageJoinRequests = isMemberOfShop(me, shopId) || me?.role === 'admin';
 
   const fetchOrders = async (silent = false) => {
     if (!silent) setLoading(true);

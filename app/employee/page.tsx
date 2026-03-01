@@ -32,6 +32,7 @@ type Shop = {
 
 type MyEmployeeProfile = {
   _id: string;
+  role?: 'user' | 'rider' | 'employee' | 'admin';
   assignedShopId?: string | null;
   assignedShopIds?: string[];
   joinRequestShopId?: string | null;
@@ -555,7 +556,7 @@ export default function EmployeePage() {
             <p className="mt-1 text-xs font-semibold text-blue-500">{shop.distanceKm != null ? `${shop.distanceKm} km` : '-'}</p>
             <p className="mt-1 text-xs font-black text-indigo-600">Orders in shop: {shopOrderCountById[shop._id] ?? 0}</p>
 
-            {isMemberOfShop(shop._id) ? (
+            {isMemberOfShop(shop._id) || me?.role === 'admin' ? (
               <Link
                 href={`/employee/shop/${shop._id}`}
                 onClick={(event) => event.stopPropagation()}
