@@ -27,6 +27,7 @@ type ShopOrder = {
   laundryType?: 'wash' | 'dry';
   weightCategory?: 's' | 'm' | 'l' | '0-4' | '6-10' | '10-20';
   serviceTimeMinutes?: number;
+  washTimeMinutes?: number;
   pickupType?: 'now' | 'schedule';
   pickupAddress?: string;
   deliveryAddress?: string;
@@ -377,6 +378,7 @@ export default function EmployeeShopPage() {
             laundryType: order.laundryType,
             weightCategory: order.weightCategory,
             serviceTimeMinutes: order.serviceTimeMinutes,
+            washTimeMinutes: order.washTimeMinutes,
             pickupType: order.pickupType,
           });
           const washPrice = priceSummary.washPrice;

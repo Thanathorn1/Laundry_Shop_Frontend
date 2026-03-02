@@ -15,6 +15,7 @@ type CreateOrderPayload = {
   laundryType?: 'wash' | 'dry';
   weightCategory?: 's' | 'm' | 'l';
   serviceTimeMinutes?: number;
+  washTimeMinutes?: number;
   pickupLatitude: number;
   pickupLongitude: number;
   pickupAddress: string;
@@ -163,6 +164,7 @@ export default function CreateOrderPage() {
   const [laundryType, setLaundryType] = useState<'wash' | 'dry'>('wash');
   const [weightCategory, setWeightCategory] = useState<'s' | 'm' | 'l'>('s');
   const [serviceTimeMinutes, setServiceTimeMinutes] = useState(50);
+  const [washTimeMinutes, setWashTimeMinutes] = useState(50);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -238,9 +240,10 @@ export default function CreateOrderPage() {
         laundryType,
         weightCategory,
         serviceTimeMinutes,
+        washTimeMinutes,
         pickupType,
       }),
-    [laundryType, weightCategory, serviceTimeMinutes, pickupType],
+    [laundryType, weightCategory, serviceTimeMinutes, washTimeMinutes, pickupType],
   );
 
   const unitPrice = laundryType === 'dry' ? 20 : getWashUnitPrice(weightCategory);
@@ -495,6 +498,7 @@ export default function CreateOrderPage() {
       laundryType,
       weightCategory,
       serviceTimeMinutes,
+      washTimeMinutes,
       pickupLatitude: pickupLat,
       pickupLongitude: pickupLng,
       pickupAddress: pickupAddress.trim(),
@@ -549,6 +553,7 @@ export default function CreateOrderPage() {
       setLaundryType('wash');
       setWeightCategory('s');
       setServiceTimeMinutes(50);
+      setWashTimeMinutes(50);
       setBasketPhotos([]);
       setSavePickup(false);
       router.push('/customer');
@@ -779,7 +784,7 @@ export default function CreateOrderPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="mb-1 block text-sm font-bold">Laundry Type</label>
               <select
@@ -818,6 +823,23 @@ export default function CreateOrderPage() {
               </select>
               <p className="mt-1 text-xs font-semibold text-blue-700/70">เลือกเวลาอบผ้าเป็นนาที (เช่น 50, 75, 100 นาที)</p>
             </div>
+            {laundryType !== 'dry' && (
+              <div>
+                <label className="mb-1 block text-sm font-bold">Wash Time (ซักผ้า กี่นาที)</label>
+                <select
+                  value={String(washTimeMinutes)}
+                  onChange={(event) => setWashTimeMinutes(Number(event.target.value))}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
+                >
+                  <option value="50">50</option>
+                  <option value="75">75</option>
+                  <option value="100">100</option>
+                  <option value="125">125</option>
+                  <option value="150">150</option>
+                </select>
+                <p className="mt-1 text-xs font-semibold text-blue-700/70">เลือกเวลาซักผ้าเป็นนาที (เช่น 50, 75, 100 นาที)</p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -978,7 +1000,7 @@ export default function CreateOrderPage() {
             <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Auto Price</p>
             <p className="mt-1 text-lg font-black text-emerald-800">฿{estimatedPrice.totalPrice.toLocaleString()}</p>
             <div className="mt-1 space-y-1 text-xs font-semibold text-emerald-700/90">
-              <p>สูตรค่าซัก: {laundryType === 'dry' ? '0 บาท (Dry only)' : `(${serviceTimeMinutes} ÷ 50) × ${unitPrice} บาท`}</p>
+              <p>สูตรค่าซัก: {laundryType === 'dry' ? '0 บาท (Dry only)' : `(${washTimeMinutes} ÷ 50) × ${unitPrice} บาท`}</p>
               <p>สูตรค่าอบผ้า: ({serviceTimeMinutes} ÷ 50) × 20 บาท</p>
             </div>
             <div className="mt-3 border-t border-emerald-200 pt-2 text-xs font-semibold text-emerald-800 space-y-1">

@@ -31,19 +31,31 @@ export type RoadRouteResult = {
 
 import { API_BASE_URL } from './api';
 
-// Cache เก็บผลลัพธ์เส้นทางไว้ 20 วินาที เพื่อไม่ต้องเรียก API ซ้ำบ่อยเกินไป
+// ======== ระบบ Cache & Deduplication ========
+
+// Cache เก็บผลลัพธ์เส้นทางไว้ 60 วินาที เพื่อไม่ต้องเรียก API ซ้ำบ่อยเกินไป
 const ROUTE_CACHE_TTL_MS = 60_000;
+// Map สำหรับเก็บ cache: key = "lat,lng->lat,lng", value = { expiresAt, data }
 const routeCache = new Map<string, { expiresAt: number; data: RoadRouteResult }>();
+
+// ถ้าเรียก API ล้มเหลว จะ cooldown 5 วินาทีก่อนลองใหม่ (ป้องกันยิง API ซ้ำเมื่อ server มีปัญหา)
 const ROUTE_FAILURE_COOLDOWN_MS = 5_000;
 const routeFailureCooldown = new Map<string, number>();
+
+// เก็บ request ที่กำลังรอผลอยู่ — ถ้ามี request เดิมกำลังทำอยู่ จะไม่ส่งซ้ำ (deduplication)
 const inFlightRequests = new Map<string, Promise<RoadRouteResult>>();
 
-// ปัดเศษพิกัดให้เหมือนกัน (ป้องกัน cache miss จากความแตกต่างเล็กน้อย)
+// ======== Helper Functions ========
+
+// ปัดเศษพิกัดเหลือ 5 ตำแหน่ง (~1 เมตร) เพื่อให้พิกัดที่เกือบเท่ากัน hit cache เดียวกัน
+// เช่น 13.756301 กับ 13.756299 จะปัดเป็น 13.7563 เหมือนกัน
 const roundCoord = (value: number) => Math.round(value * 100000) / 100000;
 
 // สร้าง key สำหรับ cache จากพิกัดต้นทาง->ปลายทาง
+// ตัวอย่าง: "13.7563,100.5018->13.8,100.6"
 const routeCacheKey = (from: LatLngTuple, to: LatLngTuple) =>
   `${roundCoord(from[0])},${roundCoord(from[1])}->${roundCoord(to[0])},${roundCoord(to[1])}`;
+
 
 function apiUrl(path: string) {
   const base = API_BASE_URL.replace(/\/+$/, '');

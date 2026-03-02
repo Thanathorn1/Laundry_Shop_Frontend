@@ -43,10 +43,12 @@ export function calculateLaundryPrice(params: {
   laundryType?: LaundryType;
   weightCategory?: WeightCategory | LegacyWeightCategory;
   serviceTimeMinutes?: number;
+  washTimeMinutes?: number;
 }): number {
   const serviceTimeMinutes = normalizeServiceTimeMinutes(params.serviceTimeMinutes);
+  const washTimeMinutes = normalizeServiceTimeMinutes(params.washTimeMinutes);
   const washUnitPrice = getWashUnitPrice(params.weightCategory);
-  const washPrice = params.laundryType === 'dry' ? 0 : (serviceTimeMinutes / 50) * washUnitPrice;
+  const washPrice = params.laundryType === 'dry' ? 0 : (washTimeMinutes / 50) * washUnitPrice;
   const dryPrice = (serviceTimeMinutes / 50) * 20;
   const calculated = washPrice + dryPrice;
   return Math.round(calculated * 100) / 100;
@@ -56,11 +58,13 @@ export function calculateOrderPriceSummary(params: {
   laundryType?: LaundryType;
   weightCategory?: WeightCategory | LegacyWeightCategory;
   serviceTimeMinutes?: number;
+  washTimeMinutes?: number;
   pickupType?: PickupType;
 }) {
   const serviceTimeMinutes = normalizeServiceTimeMinutes(params.serviceTimeMinutes);
+  const washTimeMinutes = normalizeServiceTimeMinutes(params.washTimeMinutes);
   const washUnitPrice = getWashUnitPrice(params.weightCategory);
-  const washPrice = params.laundryType === 'dry' ? 0 : Math.round(((serviceTimeMinutes / 50) * washUnitPrice) * 100) / 100;
+  const washPrice = params.laundryType === 'dry' ? 0 : Math.round(((washTimeMinutes / 50) * washUnitPrice) * 100) / 100;
   const dryPrice = Math.round(((serviceTimeMinutes / 50) * 20) * 100) / 100;
   const baseLaundryPrice = Math.round((washPrice + dryPrice) * 100) / 100;
   const deliveryFee = DELIVERY_FEE;

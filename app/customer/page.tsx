@@ -196,6 +196,7 @@ interface Order {
     laundryType?: 'wash' | 'dry';
     weightCategory?: 's' | 'm' | 'l' | '0-4' | '6-10' | '10-20';
     serviceTimeMinutes?: number;
+    washTimeMinutes?: number;
     createdAt: string;
     deliveryAddress?: string | null;
     riderId?: string | null;
@@ -264,6 +265,7 @@ export default function CustomerPage() {
     const [editLaundryType, setEditLaundryType] = useState<'wash' | 'dry'>('wash');
     const [editWeightCategory, setEditWeightCategory] = useState<'s' | 'm' | 'l'>('s');
     const [editServiceTimeMinutes, setEditServiceTimeMinutes] = useState(50);
+    const [editWashTimeMinutes, setEditWashTimeMinutes] = useState(50);
     const [editSaving, setEditSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [isAdminSession, setIsAdminSession] = useState(false);
@@ -561,6 +563,7 @@ export default function CustomerPage() {
         setEditLaundryType(order.laundryType || 'wash');
         setEditWeightCategory((order.weightCategory as 's' | 'm' | 'l') || 's');
         setEditServiceTimeMinutes(order.serviceTimeMinutes || 50);
+        setEditWashTimeMinutes(order.washTimeMinutes || 50);
         setEditBasketPhotos([]);
 
         const coordinates = order.pickupLocation?.coordinates;
@@ -629,6 +632,7 @@ export default function CustomerPage() {
                     laundryType: editLaundryType,
                     weightCategory: editWeightCategory,
                     serviceTimeMinutes: editServiceTimeMinutes,
+                    washTimeMinutes: editWashTimeMinutes,
                     images: editBasketPhotos.length ? await filesToBase64(editBasketPhotos) : undefined,
                 }),
             });
@@ -698,9 +702,10 @@ export default function CustomerPage() {
             laundryType: editLaundryType,
             weightCategory: editWeightCategory,
             serviceTimeMinutes: editServiceTimeMinutes,
+            washTimeMinutes: editWashTimeMinutes,
             pickupType: editPickupType,
         });
-    }, [editLaundryType, editWeightCategory, editServiceTimeMinutes, editPickupType]);
+    }, [editLaundryType, editWeightCategory, editServiceTimeMinutes, editWashTimeMinutes, editPickupType]);
 
     useEffect(() => {
         if (editPickupType !== 'schedule') return;
@@ -1022,6 +1027,21 @@ export default function CustomerPage() {
                                         <option value="150">150 min</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label className="mb-1 block text-sm font-bold text-blue-900">Wash Time (ซักผ้า กี่นาที)</label>
+                                    <select
+                                        value={String(editWashTimeMinutes)}
+                                        onChange={e => setEditWashTimeMinutes(Number(e.target.value))}
+                                        className="w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none focus:border-blue-500"
+                                        disabled={editLaundryType === 'dry'}
+                                    >
+                                        <option value="50">50 min</option>
+                                        <option value="75">75 min</option>
+                                        <option value="100">100 min</option>
+                                        <option value="125">125 min</option>
+                                        <option value="150">150 min</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -1131,7 +1151,7 @@ export default function CustomerPage() {
                                 <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Auto Price</p>
                                 <p className="mt-1 text-lg font-black text-emerald-800">฿{editPriceSummary.totalPrice.toLocaleString()}</p>
                                 <div className="mt-1 space-y-1 text-xs font-semibold text-emerald-700/90">
-                                    <p>สูตรค่าซัก: {editLaundryType === 'dry' ? '0 บาท (Dry only)' : `(${editServiceTimeMinutes} ÷ 50) × ${getWashUnitPrice(editWeightCategory)} บาท`}</p>
+                                    <p>สูตรค่าซัก: {editLaundryType === 'dry' ? '0 บาท (Dry only)' : `(${editWashTimeMinutes} ÷ 50) × ${getWashUnitPrice(editWeightCategory)} บาท`}</p>
                                     <p>สูตรค่าอบผ้า: ({editServiceTimeMinutes} ÷ 50) × 20 บาท</p>
                                 </div>
                                 <div className="mt-3 border-t border-emerald-200 pt-2 text-xs font-semibold text-emerald-800 space-y-1">
@@ -1279,6 +1299,7 @@ export default function CustomerPage() {
                                         laundryType: order.laundryType,
                                         weightCategory: order.weightCategory,
                                         serviceTimeMinutes: order.serviceTimeMinutes,
+                                        washTimeMinutes: order.washTimeMinutes,
                                         pickupType: order.pickupType,
                                     });
                                     const displayPrice = order.totalPrice > 0 ? order.totalPrice : priceSummary.totalPrice;
