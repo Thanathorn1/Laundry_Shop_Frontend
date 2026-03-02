@@ -660,6 +660,7 @@ export default function RiderDashboard() {
      * - out_for_delivery: นำผ้าไปส่งคืนลูกค้า
      */
     const getRouteTargetForTask = (order: Order): [number, number] | null => {
+        if (order.status === 'pending') return getPickupTarget(order);         // แสดงเส้นทางไปรับของ
         if (order.status === 'assigned') return getPickupTarget(order);        // ไปรับของ
         if (order.status === 'picked_up') return getShopTarget(order);         // ไปส่งร้าน
         if (order.status === 'laundry_done') return getShopTarget(order);      // ไปรับที่ร้าน
@@ -753,6 +754,14 @@ export default function RiderDashboard() {
                 return false;
             });
 
+            // Also include clicked pending order from filteredOrders (not yet in myTasks)
+            if (openSections.orders && activeNearbyOrderId && !focusedMoveTasks.some(t => t._id === activeNearbyOrderId)) {
+                const pendingOrder = (filteredOrders || []).find(o => o._id === activeNearbyOrderId && o.status === 'pending');
+                if (pendingOrder) {
+                    focusedMoveTasks.push(pendingOrder);
+                }
+            }
+
             if (!focusedMoveTasks.length) {
                 setTaskRouteLines([]);
                 return;
@@ -789,7 +798,7 @@ export default function RiderDashboard() {
         return () => {
             active = false;
         };
-    }, [myTasks, userLocation, shopsById, handoverShopByOrderId, activeSendBackOrderId, sendBackSortMode, openSections, activeNearbyOrderId, activePickupAtShopOrderId]);
+    }, [myTasks, filteredOrders, userLocation, shopsById, handoverShopByOrderId, activeSendBackOrderId, sendBackSortMode, openSections, activeNearbyOrderId, activePickupAtShopOrderId]);
 
     // Auto-select first nearby shop when the list changes (so route appears on first open)
     useEffect(() => {
@@ -1088,6 +1097,17 @@ export default function RiderDashboard() {
                 body: JSON.stringify({ status: 'picked_up' }),
             });
             setShopsAlert(true);
+            await fetchData();
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : String(err));
+        }
+    };
+
+    const cancelPickup = async (orderId: string) => {
+        if (!confirm('Cancel this pickup? The order will return to available orders.')) return;
+        try {
+            await apiFetch(`/rider/cancel-pickup/${orderId}`, { method: 'PATCH' });
+            alert('Pickup cancelled.');
             await fetchData();
         } catch (err: unknown) {
             alert(err instanceof Error ? err.message : String(err));
@@ -1618,12 +1638,20 @@ export default function RiderDashboard() {
                                             )}
 
                                             {order.status === 'assigned' && (
-                                                <button
-                                                    onClick={() => pickUpOrder(order._id)}
-                                                    className="w-full bg-indigo-600 text-white text-[10px] font-black py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 uppercase tracking-widest"
-                                                >
-                                                    Pick Up
-                                                </button>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => pickUpOrder(order._id)}
+                                                        className="flex-1 bg-indigo-600 text-white text-[10px] font-black py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 uppercase tracking-widest"
+                                                    >
+                                                        Pick Up
+                                                    </button>
+                                                    <button
+                                                        onClick={() => cancelPickup(order._id)}
+                                                        className="flex-1 bg-rose-500 text-white text-[10px] font-black py-2 rounded-lg hover:bg-rose-600 transition-colors shadow-lg shadow-rose-100 uppercase tracking-widest"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
                                             )}
 
                                             {order.status === 'picked_up' && (
@@ -1949,15 +1977,26 @@ export default function RiderDashboard() {
                                                         )}
 
                                                         {order.status === 'assigned' && (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    pickUpOrder(order._id);
-                                                                }}
-                                                                className="bg-indigo-600 text-[10px] font-black text-white px-3 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100"
-                                                            >
-                                                                Pick Up
-                                                            </button>
+                                                            <div className="flex gap-1.5">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        pickUpOrder(order._id);
+                                                                    }}
+                                                                    className="bg-indigo-600 text-[10px] font-black text-white px-3 py-2 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100"
+                                                                >
+                                                                    Pick Up
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        cancelPickup(order._id);
+                                                                    }}
+                                                                    className="bg-rose-500 text-[10px] font-black text-white px-3 py-2 rounded-xl hover:bg-rose-600 transition-colors shadow-lg shadow-rose-100"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
                                                         )}
                                                     </div>
                                                     <div className="space-y-1.5">
