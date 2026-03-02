@@ -50,6 +50,8 @@ export default function AdminEmployeesPage() {
   const [listMode, setListMode] = useState<"all" | "whitelist" | "blacklist">("all");
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<"alpha-asc" | "alpha-desc" | "newest" | "oldest">("alpha-asc");
+  const [expandedShopIds, setExpandedShopIds] = useState<Set<string>>(new Set());
+  const [removingEmployeeId, setRemovingEmployeeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [shops, setShops] = useState<ShopWithEmployees[]>([]);
@@ -296,6 +298,35 @@ export default function AdminEmployeesPage() {
     }
   };
 
+  const toggleShopExpanded = (shopId: string) => {
+    setExpandedShopIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shopId)) next.delete(shopId);
+      else next.add(shopId);
+      return next;
+    });
+  };
+
+  const handleRemoveFromShop = async (employee: AdminEmployee) => {
+    const name = `${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.email;
+    if (!window.confirm(`Remove ${name} from this shop?`)) return;
+    setRemovingEmployeeId(employee._id);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiFetch(`/customers/admin/employees/${employee._id}/shop`, {
+        method: "PATCH",
+        body: JSON.stringify({ shopId: null }),
+      });
+      setMessage(`Removed ${name} from shop`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove employee from shop");
+    } finally {
+      setRemovingEmployeeId(null);
+    }
+  };
+
   const filteredEmployees = employees.filter((item) => {
     const q = search.trim().toLowerCase();
     const fullName = `${item.firstName || ""} ${item.lastName || ""}`.trim().toLowerCase();
@@ -513,23 +544,71 @@ export default function AdminEmployeesPage() {
             <div className="space-y-3">
               {sortedShops.map((shop) => {
                 const shopName = shop.shopName || shop.label || "Unnamed Shop";
+                const isExpanded = expandedShopIds.has(shop._id);
                 return (
-                  <div key={shop._id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-black text-blue-900">{shopName}</p>
-                        <p className="text-xs font-semibold text-blue-500">{shop.phoneNumber || "No phone"}</p>
+                  <div key={shop._id} className="rounded-2xl border border-slate-100 bg-slate-50 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleShopExpanded(shop._id)}
+                      className="w-full p-4 text-left hover:bg-slate-100 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-black text-blue-900">{shopName}</p>
+                          <p className="text-xs font-semibold text-blue-500">{shop.phoneNumber || "No phone"}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
+                            {shop.employees.length} employee(s)
+                          </span>
+                          <span className={`text-slate-400 text-xs transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>▾</span>
+                        </div>
                       </div>
-                      <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
-                        {shop.employees.length} employee(s)
-                      </span>
-                    </div>
-                    <div className="mt-3 text-sm text-blue-700/80">
-                      {shop.employees.length === 0
-                        ? "No employees assigned"
-                        : shop.employees
-                            .map((employee) => `${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.email)
-                            .join(", ")}
+                    </button>
+
+                    <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? "max-h-[2000px]" : "max-h-0"}`}>
+                      <div className="border-t border-slate-200 px-4 pb-4">
+                        {shop.employees.length === 0 ? (
+                          <p className="text-sm text-blue-400 font-semibold py-3">No employees assigned to this shop.</p>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            {shop.employees.map((employee) => {
+                              const empName = `${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.email;
+                              const isRemoving = removingEmployeeId === employee._id;
+                              return (
+                                <div key={employee._id} className="flex items-center justify-between rounded-xl bg-white border border-slate-100 px-4 py-3 shadow-sm">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-blue-900 text-sm truncate">{empName}</p>
+                                    <p className="text-xs text-slate-500 truncate">{employee.email}</p>
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                      {employee.phoneNumber && (
+                                        <span className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                                          ☎ {employee.phoneNumber}
+                                        </span>
+                                      )}
+                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded ${employee.isBanned ? "bg-rose-50 text-rose-600 border border-rose-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"}`}>
+                                        {employee.isBanned ? "BANNED" : "ACTIVE"}
+                                      </span>
+                                      {employee.createdAt && (
+                                        <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                          Joined {formatDate(employee.createdAt)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => handleRemoveFromShop(employee)}
+                                    disabled={isRemoving}
+                                    className="ml-3 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-black text-rose-600 hover:bg-rose-100 disabled:opacity-50 transition-colors"
+                                  >
+                                    {isRemoving ? "Removing..." : "Remove"}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
