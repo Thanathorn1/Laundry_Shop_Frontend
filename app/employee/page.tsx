@@ -210,25 +210,8 @@ export default function EmployeePage() {
         const meData = (await apiFetch('/customers/me')) as MyEmployeeProfile;
         setMe(meData);
 
-        let endpoint = '/employee/shops/nearby?maxDistanceKm=12';
-
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 8000,
-              maximumAge: 60000,
-            });
-          });
-
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          endpoint = `/employee/shops/nearby?lat=${lat}&lng=${lng}&maxDistanceKm=12`;
-        } catch {
-          // Fallback: backend returns assigned shop even without current location
-        }
-
-        const data = await apiFetch(endpoint);
+        // Fetch ALL visible shops (not limited by distance) so employee can see every shop
+        const data = await apiFetch('/map/shops');
         setShops(Array.isArray(data) ? data : []);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load shops';
